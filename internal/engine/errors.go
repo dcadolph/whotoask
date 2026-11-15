@@ -34,3 +34,8 @@ var ErrCanceled = errors.New("canceled")
 
 // ErrNothingRecorded indicates a refresh with no recorded index run to replay.
 var ErrNothingRecorded = errors.New("nothing to refresh: index a source at least once first")
+
+// ErrScopeOverlap indicates a full read that covers only part of what an
+// earlier run read together. Replacing the earlier run's records would lose
+// the rest, and keeping them would count the shared part twice.
+var ErrScopeOverlap = errors.New("the run covers only part of an earlier run")

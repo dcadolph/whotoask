@@ -72,6 +72,11 @@ type Indexer struct {
 	// Now is the clock the index and the watermarks read. Nil means the system
 	// clock.
 	Now func() time.Time
+	// SingleScope makes a full read replace every other scope its source holds.
+	// A host that keeps one scope per source, forgetting the old one when a
+	// person picks a new file or folder, sets it. Unset, a second file or a
+	// second set of repositories is kept beside the first.
+	SingleScope bool
 	// unlocked is the codec an Unlock returned. It serves every later read and
 	// write, so one passphrase covers the rest of the run.
 	unlocked vault.Codec
@@ -158,6 +163,13 @@ type FoldParams struct {
 	// records instead of replacing them, so a partial re-read keeps the people
 	// and topics it did not re-fetch. It always runs inside a merge.
 	Incremental bool
+	// Source is the registry name of the source being read, empty when the
+	// records come from no one source.
+	Source string
+	// Supersede reports whether a full read of Source replaces the records
+	// held under another scope of it, or returns an error when the read must
+	// be refused. Nil replaces only the scopes the records themselves carry.
+	Supersede func(held string) (bool, error)
 	// AllowShrink accepts a source that returned far less than it did last
 	// time, which is otherwise refused as a truncated read.
 	AllowShrink bool
@@ -240,7 +252,15 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Every record carries the scope of the run that read it, the same key the
+	// refresh record uses, so the index holds exactly the runs a refresh
+	// replays. Without it a second file or repository replaced the first.
+	rscope := RefreshScope(req.Source, scope, req.File, req.RepoPaths)
+	for i := range recs {
+		recs[i].Scope = rscope
+	}
 	ix, err := x.fold(ctx, recs, FoldParams{
+		Source: req.Source, Supersede: x.supersede(spec, req.RepoPaths),
 		Merge: req.Merge, Incremental: incremental, AllowShrink: req.AllowShrink, HalfLifeDays: req.HalfLifeDays,
 		AliasesFile: req.AliasesFile, Embed: req.Embed, EmbedModel: req.EmbedModel, OllamaURL: req.OllamaURL,
 		ChangesFile: req.ChangesFile, Episodes: eps,
@@ -452,11 +472,31 @@ func (x *Indexer) foldBase(existing *index.Index, p FoldParams) (*index.Index, e
 // foldRecords adds recs to ix as an incremental merge, a merge, or a full
 // replace, refusing a replace that would shrink or empty a good index.
 func foldRecords(ix, existing *index.Index, recs []connector.Record, p FoldParams) error {
+	// A full read merged into an index replaces its own scope and whichever
+	// other scopes of its source the rule says it takes the place of. An
+	// incremental read only adds a delta under its own scope.
+	var dropped map[string]bool
+	if p.Merge && !p.Incremental && existing != nil {
+		var err error
+		if dropped, err = supersededScopes(ix, recs, p); err != nil {
+			return err
+		}
+	}
 	// An incremental read returns only what changed, so it is legitimately far
 	// smaller than the last full read; the shrink guard, which protects a full
 	// replace from a truncated read, does not apply to it.
-	if !p.Incremental {
-		if err := GuardShrink(existing, recs, p.AllowShrink); err != nil {
+	if !p.Incremental && existing != nil {
+		had := existing.SourceSize
+		if p.Merge {
+			had = func(name string) int {
+				scopes := recordScopes(recs, name)
+				if name == p.Source {
+					maps.Copy(scopes, dropped)
+				}
+				return ix.Replaces(name, scopes)
+			}
+		}
+		if err := guardShrink(recs, had, p.AllowShrink); err != nil {
 			return err
 		}
 	}
@@ -464,6 +504,9 @@ func foldRecords(ix, existing *index.Index, recs []connector.Record, p FoldParam
 	case p.Incremental && existing != nil:
 		ix.MergeIncremental(recs)
 	case p.Merge:
+		if len(dropped) > 0 {
+			ix.DropScopes(p.Source, func(scope string) bool { return dropped[scope] })
+		}
 		ix.Add(recs)
 	default:
 		// A replacing run that read nothing would write an empty index over a
@@ -781,7 +824,17 @@ func embedProgressEvery(total int) int {
 // what it managed to read and return no error, so without this a run that saw
 // a fraction of a source would shrink the index while reporting success.
 func GuardShrink(existing *index.Index, recs []connector.Record, allow bool) error {
-	if existing == nil || allow {
+	if existing == nil {
+		return nil
+	}
+	return guardShrink(recs, existing.SourceSize, allow)
+}
+
+// guardShrink is GuardShrink with the count of records a source's read takes
+// the place of supplied by had, so a read of one scope is measured against that
+// scope and not against everything the source holds.
+func guardShrink(recs []connector.Record, had func(source string) int, allow bool) error {
+	if allow {
 		return nil
 	}
 	incoming := make(map[string]int)
@@ -792,14 +845,95 @@ func GuardShrink(existing *index.Index, recs []connector.Record, allow bool) err
 		if name == "" {
 			continue
 		}
-		had := existing.SourceSize(name)
-		if had > 0 && got*2 < had {
+		if before := had(name); before > 0 && got*2 < before {
 			return fmt.Errorf(
 				"%w: %s returned %d records where it last returned %d, so the existing index "+
 					"was left alone. Check the messages above for a rate limit or a token that "+
 					"lost a scope. Pass --allow-shrink if the source really did get smaller",
-				ErrShrunkSource, name, got, had)
+				ErrShrunkSource, name, got, before)
 		}
 	}
 	return nil
+}
+
+// recordScopes returns the scopes the records of the named source carry.
+func recordScopes(recs []connector.Record, source string) map[string]bool {
+	scopes := make(map[string]bool)
+	for _, rec := range recs {
+		if rec.Source == source {
+			scopes[rec.Scope] = true
+		}
+	}
+	return scopes
+}
+
+// supersededScopes returns the other scopes of the source being read that this
+// full read takes the place of, asking the fold's rule about each scope the
+// source holds. A scope the records carry themselves, and records with no
+// scope, are left to the index, which replaces those in any case.
+func supersededScopes(ix *index.Index, recs []connector.Record, p FoldParams) (map[string]bool, error) {
+	if p.Supersede == nil || p.Source == "" {
+		return nil, nil
+	}
+	own := recordScopes(recs, p.Source)
+	dropped := make(map[string]bool)
+	for _, held := range ix.Scopes(p.Source) {
+		if held == "" || own[held] {
+			continue
+		}
+		drop, err := p.Supersede(held)
+		if err != nil {
+			return nil, err
+		}
+		if drop {
+			dropped[held] = true
+		}
+	}
+	return dropped, nil
+}
+
+// supersede returns the rule for which other scopes of a source a full read of
+// it replaces. A source that reads a file keeps every file beside the others.
+// Git keeps a set of repositories beside the others unless the run reads every
+// repository of that set again, and refuses a run that reads only some of
+// them. Every other source holds one scope at a time, as does any source under
+// a host that keeps one scope per source.
+func (x *Indexer) supersede(spec SourceSpec, repoPaths []string) func(held string) (bool, error) {
+	switch {
+	case x.SingleScope:
+		return func(string) (bool, error) { return true, nil }
+	case spec.Name == "git":
+		return gitSupersede(repoPaths)
+	case spec.FileKeyed:
+		return func(string) (bool, error) { return false, nil }
+	default:
+		return func(string) (bool, error) { return true, nil }
+	}
+}
+
+// gitSupersede returns the git rule for a run over paths. A held set of
+// repositories is replaced when the run reads all of it again and kept when the
+// run reads none of it. A run that reads only part of it is refused: replacing
+// the set would lose the repositories left out, and keeping it would count the
+// ones read twice.
+func gitSupersede(paths []string) func(held string) (bool, error) {
+	return func(held string) (bool, error) {
+		heldPaths := strings.Split(strings.TrimPrefix(held, gitScopePrefix), ",")
+		var outside []string
+		for _, path := range heldPaths {
+			if !slices.Contains(paths, path) {
+				outside = append(outside, path)
+			}
+		}
+		switch len(outside) {
+		case 0:
+			return true, nil
+		case len(heldPaths):
+			return false, nil
+		}
+		return false, fmt.Errorf(
+			"%w: an earlier run read %s together, and this run leaves out %s. "+
+				"Read them all in one run again, or run without --merge to start over",
+			ErrScopeOverlap, strings.Join(heldPaths, ", "), strings.Join(outside, ", "))
+	}
 }

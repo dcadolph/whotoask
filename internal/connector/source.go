@@ -83,6 +83,13 @@ type Record struct {
 	Terms []string
 	// Source names the origin connector, e.g. "org-csv".
 	Source string
+	// Scope names the slice of its source the record came from, such as one
+	// file or one set of repositories. The indexer sets it from the run that
+	// read the record, so a later read of another slice of the same source adds
+	// to what is held instead of replacing it. Empty means the whole source: a
+	// record written before records carried a scope, or one folded in by a
+	// caller that names no slice.
+	Scope string
 	// Weight scales this record's affinity contribution; zero means one.
 	Weight float64
 	// Time is when the described activity happened. The zero value marks the

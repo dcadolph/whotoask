@@ -55,13 +55,17 @@ func (r *Run) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
+// gitScopePrefix starts the refresh scope of a git run, ahead of its sorted,
+// comma-joined repository paths.
+const gitScopePrefix = "repo:"
+
 // RefreshScope keys one indexing run for the refresh config. Two runs with the
 // same key describe the same slice of a source and the newer flags replace the
 // older; two runs with different keys, such as two repositories indexed in
 // separate git runs, are both kept and both replayed.
 func RefreshScope(source, watermarkScope, file string, repoPaths []string) string {
 	if source == "git" {
-		return "repo:" + sortedJoin(repoPaths)
+		return gitScopePrefix + sortedJoin(repoPaths)
 	}
 	if spec, ok := SourceByName(source); ok && spec.FileKeyed {
 		return "file:" + file

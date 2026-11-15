@@ -675,6 +675,10 @@ func (h *Handle) indexer(now time.Time, log *tailLog) *engine.Indexer {
 		Log:    log,
 		Stdin:  strings.NewReader(""),
 		Now:    func() time.Time { return now },
+		// The host keeps one scope per source: after each run it forgets every
+		// scope but the newest. A person who picks another file or folder means
+		// to replace the old one, so its records go with it.
+		SingleScope: true,
 	}
 }
 

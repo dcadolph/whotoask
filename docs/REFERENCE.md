@@ -58,7 +58,18 @@ Builds or extends the index from one source per run.
 
     whotoask index --source SOURCE [scope flags] [--merge]
 
-The index keeps one record set per source, so a full read of a second scope of the same source replaces what the first scope contributed; only an incremental merge folds into it.
+With `--merge`, what a run replaces depends on the source:
+
+- A source read from a file (`org-csv`, `matters`, `codeowners`, `slack-export`, `json`) keeps
+  each file on its own. Merging a second file adds it beside the first, and reading a file again
+  replaces only that file.
+- Git keeps each run's set of repositories on its own. A second run over another repository
+  adds to the first. A run that reads a whole earlier set again, alone or with more, replaces
+  that set. A full run that reads only part of an earlier set is refused, since replacing the set
+  would lose the repositories left out. Read the whole set in one run again.
+- Every other source holds one scope at a time. A full read of another scope, such as a
+  different list of GitHub repositories or Jira projects, replaces what the first one
+  contributed.
 
 | Flag                | Default   | Applies to | What it does                                     |
 | ------------------- | --------- | ---------- | ------------------------------------------------ |

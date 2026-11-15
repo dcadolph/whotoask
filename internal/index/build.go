@@ -27,11 +27,14 @@ func (ix *Index) Build(records []connector.Record) {
 	ix.rebuild()
 }
 
-// Add merges records into the current index. Each source named in records
-// replaces whatever that source contributed before, so re-reading a source is
-// idempotent: indexing Slack twice leaves the same index as indexing it once,
-// and a scheduled merge does not inflate its own weights over time. Sources
-// not named are left as they are. Person records merge by email or id, channel
+// Add merges records into the current index. Each source and scope named in
+// records replaces whatever that scope of the source contributed before, so
+// re-reading it is idempotent: indexing Slack twice leaves the same index as
+// indexing it once, and a scheduled merge does not inflate its own weights over
+// time. Another scope of the same source, such as a second file or a second
+// set of repositories, is kept. Records with no scope stand for the whole
+// source and replace everything it held. Sources not named are left as they
+// are. Person records merge by email or id, channel
 // records by name. Embeddings are left alone; call Embed to refresh vectors.
 func (ix *Index) Add(records []connector.Record) {
 	ix.take(scrubRecords(records))
@@ -53,8 +56,10 @@ func scrubRecords(records []connector.Record) []connector.Record {
 	return out
 }
 
-// take files records under the source that produced them, replacing that
-// source's previous contribution. Records that name no source cannot be told
+// take files records under the source that produced them, replacing what the
+// same scopes of that source contributed before and keeping its other scopes.
+// Keyed by source alone, a second file or repository read into the same source
+// replaced the first one's records. Records that name no source cannot be told
 // apart from the ones already held, so they accumulate instead: every
 // connector names itself, and refusing to guess keeps a hand-assembled record
 // set from silently erasing another.
@@ -71,7 +76,14 @@ func (ix *Index) take(records []connector.Record) {
 			ix.sources[name] = append(ix.sources[name], recs...)
 			continue
 		}
-		ix.sources[name] = recs
+		scopes := recordScopes(recs)
+		kept := make([]connector.Record, 0, len(ix.sources[name])+len(recs))
+		for _, held := range ix.sources[name] {
+			if !replaces(scopes, held.Scope) {
+				kept = append(kept, held)
+			}
+		}
+		ix.sources[name] = sortByScope(append(kept, recs...))
 	}
 	if ix.sourceCounts == nil {
 		ix.sourceCounts = make(map[string]int)
@@ -79,6 +91,72 @@ func (ix *Index) take(records []connector.Record) {
 	for name := range incoming {
 		ix.sourceCounts[name] = len(ix.sources[name])
 	}
+}
+
+// recordScopes returns the set of scopes records carry.
+func recordScopes(records []connector.Record) map[string]bool {
+	scopes := make(map[string]bool)
+	for _, rec := range records {
+		scopes[rec.Scope] = true
+	}
+	return scopes
+}
+
+// replaces reports whether a read of the given scopes replaces a held record of
+// scope held. It does when it re-reads that scope. It also does when either
+// side has no scope: a read with no scope stands for the whole source, and a
+// held record with no scope was written before records carried one, so nothing
+// says which slice it belongs to and any read of the source takes its place.
+func replaces(scopes map[string]bool, held string) bool {
+	return held == "" || scopes[""] || scopes[held]
+}
+
+// sortByScope orders a source's records by scope, keeping the order within each
+// scope, so the same held records always replay in the same order whatever
+// order the runs that read them happened in.
+func sortByScope(records []connector.Record) []connector.Record {
+	slices.SortStableFunc(records, func(a, b connector.Record) int {
+		return strings.Compare(a.Scope, b.Scope)
+	})
+	return records
+}
+
+// Replaces returns how many records the named source holds that a read of the
+// given scopes would replace, so a caller can tell a full read from a truncated
+// one before it folds. It needs the sources sidecar loaded.
+func (ix *Index) Replaces(source string, scopes map[string]bool) int {
+	n := 0
+	for _, held := range ix.sources[source] {
+		if replaces(scopes, held.Scope) {
+			n++
+		}
+	}
+	return n
+}
+
+// Scopes returns the scopes the named source holds records under, sorted. The
+// empty scope is among them when the source holds records with none.
+func (ix *Index) Scopes(source string) []string {
+	return slices.Sorted(maps.Keys(recordScopes(ix.sources[source])))
+}
+
+// DropScopes removes the named source's held records under every scope drop
+// reports true for, and returns how many it removed. It does not rebuild: the
+// caller follows it with the Add of the read that takes their place.
+func (ix *Index) DropScopes(source string, drop func(scope string) bool) int {
+	held := ix.sources[source]
+	kept := make([]connector.Record, 0, len(held))
+	for _, rec := range held {
+		if !drop(rec.Scope) {
+			kept = append(kept, rec)
+		}
+	}
+	if len(kept) == len(held) {
+		return 0
+	}
+	ix.sources[source] = kept
+	ix.sourceCounts[source] = len(kept)
+	return len(held) - len(kept)
 }
 
 // redactedSources returns a copy of the stored records with readable Text
@@ -149,7 +227,7 @@ func (ix *Index) MergeIncremental(records []connector.Record) {
 			// exactly as take treats the same case.
 			ix.sources[name] = append(ix.sources[name], recs...)
 		} else {
-			ix.sources[name] = foldRecords(redactSlice(ix.sources[name]), recs)
+			ix.sources[name] = sortByScope(foldRecords(redactSlice(ix.sources[name]), recs))
 		}
 		ix.sourceCounts[name] = len(ix.sources[name])
 	}
@@ -217,8 +295,14 @@ func foldLinks(base, add []connector.TopicLink) []connector.TopicLink {
 }
 
 // foldKey identifies the record a later record accumulates into: a person by
-// their per-source id, a channel by its slug.
+// their per-source id, a channel by its slug, each within the record's scope,
+// so a delta folds into the slice of the source it was read from.
 func foldKey(rec connector.Record) string {
+	return rec.Scope + "\x00" + identityFoldKey(rec)
+}
+
+// identityFoldKey identifies who or what a record describes within its scope.
+func identityFoldKey(rec connector.Record) string {
 	switch rec.Kind {
 	case connector.KindChannel:
 		return "c\x00" + slug(rec.Name)
