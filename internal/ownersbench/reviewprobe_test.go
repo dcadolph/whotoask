@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,8 +44,10 @@ func TestReviewSignalProbe(t *testing.T) {
 	}
 	gh := connector.NewGitHubWithClient(github.New(token, github.WithMaxPages(pages)),
 		connector.GitHubOptions{
-			Repos:    []string{repoFull},
-			Since:    time.Now().AddDate(-1, 0, 0),
+			Repos: []string{repoFull},
+			Resume: map[string]connector.Position{
+				strings.ToLower(repoFull): {Cursor: time.Now().AddDate(-1, 0, 0)},
+			},
 			Episodes: true,
 			Log:      os.Stderr,
 		})

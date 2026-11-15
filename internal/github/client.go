@@ -404,7 +404,9 @@ func (c *Client) getURL(ctx context.Context, endpoint, path string, out any) (st
 		return "", fmt.Errorf("github %s: %w", path, err)
 	}
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
+		// Gone is how GitHub answers for a feature a repository has turned
+		// off, such as its issue tracker.
 		return "", fmt.Errorf("github %s: %w", path, ErrNotFound)
 	case (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) &&
 		resp.Header.Get("X-RateLimit-Remaining") == "0":

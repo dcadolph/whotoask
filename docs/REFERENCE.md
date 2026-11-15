@@ -105,16 +105,20 @@ The index keeps one record set per source, so a full read of a second scope of t
 
 Re-indexing git, Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
 fetches only the items changed since the last run and folds them into the index,
-keeping everyone it did not re-read. A per-source watermark is kept in
+keeping everyone it did not re-read. Where each read stopped is kept in
 `index.state.json` beside the index. Other sources always read in full.
 
-- Jira and Confluence query for items updated since the watermark, oldest first.
-- GitHub reads only the pull requests and issues changed since the watermark, and
-  skips its whole-repo contributor and CODEOWNERS lists on an incremental run,
-  since re-counting those every time would inflate their weight. A full run
-  reads them.
-- Slack reads only messages posted since the watermark. An edit to an older
-  message is missed until a full run.
+- Jira and Confluence query for items updated since the last read, oldest first.
+  The query reaches a little below where the last read stopped, and an item that
+  comes back unchanged is not counted again.
+- GitHub keeps a position for each repository. It reads only the pull requests
+  and issues changed since that repository was last read, and skips its
+  whole-repo contributor and CODEOWNERS lists on an incremental run, since
+  re-counting those every time would inflate their weight. A full run reads
+  them.
+- Slack keeps a position for each channel and reads only the messages posted
+  after the last one it read there. An edit to an older message is missed until
+  a full run.
 - Git resumes from the last commit it read, per repository, rather than from a
   time. A pull request branched three weeks ago and merged today carries
   three-week-old dates, so a time would step straight over it. Reading two years
@@ -124,8 +128,16 @@ keeping everyone it did not re-read. A per-source watermark is kept in
   short of today records no position at all: its newest commit is not the tip,
   so resuming there would skip everything in between.
 
-Pass `--full` to re-read everything and recompact, which also picks up anything
-an incremental run skipped. A source driven by an explicit `--jira-jql` or
+A channel or repository that could not be read, because of rate limiting or an
+outage, is skipped and named in the output. It keeps its own position, so the
+next run reads it from where it really stopped and nothing posted there in
+between is lost. A channel or repository with no position yet, such as a channel
+the bot was just invited to, is read over the whole window the first time it is
+seen.
+
+An item edited after it was read is counted again on each edit, so a `--merge`
+run reads the source in full once the last full read is more than seven days
+old. Pass `--full` to do that at any time. A source driven by an explicit `--jira-jql` or
 `--confluence-cql` always reads in full, since that query is authoritative and
 cannot be narrowed to a delta.
 
@@ -1022,5 +1034,5 @@ Everything lives under `--data-dir` (default `~/.whotoask`):
 | `changes.json`  | Who and what joined or left in each of the last 100 index runs that changed anything, stamped with the run's time. A first index logs nothing. Encrypted with the same key as the index. |
 | `episodes.json` | Past conversations: who took part, where, when, the link back, and matched terms. Written by `whotoask index --episodes`, and by `whotoask connect`, which records conversations as a matter of course. Holds the words themselves only after an `--archive` index. Encrypted with the same key as the index. |
 | `index.sources.json` | The per-source records the index was built from, redacted to stemmed terms, so a `--merge` rebuilds without re-reading every source. Encrypted with the same key as the index. |
-| `index.state.json` | Per-source incremental watermarks: the newest activity time indexed for each source and scope, so a `--merge` fetches only what changed. Encrypted with the same key as the index. |
+| `index.state.json` | Where each source's last read stopped, for each scope and for each channel or repository within it, so a `--merge` fetches only what changed. Encrypted with the same key as the index. |
 | `refresh.json` | The flags each source and scope was last indexed with, when each last ran, and why its last try failed, so a refresh replays them. Encrypted with the same key as the index. |

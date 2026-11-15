@@ -128,9 +128,9 @@ func redactRecord(rec connector.Record) connector.Record {
 // Folding matches what a full read produces: a connector's full run already
 // emits one record per person carrying that person's whole activity at their
 // most recent time, which is exactly what summing the batches and taking the
-// latest time yields here. An item edited after the watermark is counted in both
-// the held record and the delta; the double count is bounded harmless because
-// topic and term weight saturate, and a periodic full re-index recompacts.
+// latest time yields here. An item edited after it was read is counted in both
+// the held record and the delta. The engine bounds that by reading the source
+// in full on a schedule, which replaces the held records with one clean count.
 func (ix *Index) MergeIncremental(records []connector.Record) {
 	if ix.sources == nil {
 		ix.sources = make(map[string][]connector.Record)

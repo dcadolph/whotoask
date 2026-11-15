@@ -20,6 +20,7 @@ import (
 	"github.com/dcadolph/whotoask/internal/connector"
 	"github.com/dcadolph/whotoask/internal/index"
 	"github.com/dcadolph/whotoask/internal/policy"
+	"github.com/dcadolph/whotoask/internal/state"
 	"github.com/dcadolph/whotoask/internal/vault"
 )
 
@@ -62,11 +63,29 @@ func TestGuardArchive(t *testing.T) {
 	}
 }
 
-// TestUpdateWatermarkConcurrent verifies that concurrent index runs against
-// different sources do not drop each other's cursor. The state file is a shared
-// read-modify-write, so without the file lock two runs race and one source's
-// watermark is lost.
-func TestUpdateWatermarkConcurrent(t *testing.T) {
+// testResumable is a source that reports fixed positions and skipped units, for
+// tests of how the engine stores them.
+type testResumable struct {
+	// positions is what Positions returns.
+	positions map[string]connector.Position
+	// skipped is what Skipped returns.
+	skipped []string
+}
+
+// Fetch returns no records.
+func (s *testResumable) Fetch(context.Context) ([]connector.Record, error) { return nil, nil }
+
+// Positions returns the fixed positions.
+func (s *testResumable) Positions() map[string]connector.Position { return s.positions }
+
+// Skipped returns the fixed skipped units.
+func (s *testResumable) Skipped() []string { return s.skipped }
+
+// TestSavePositionsConcurrent verifies that concurrent index runs against
+// different sources do not drop each other's positions. The state file is a
+// shared read-modify-write, so without the file lock two runs race and one
+// source's watermark is lost.
+func TestSavePositionsConcurrent(t *testing.T) {
 	t.Parallel()
 	x := &Indexer{Dir: Dir(t.TempDir())}
 	sources := []string{"jira", "confluence", "slack", "github"}
@@ -77,9 +96,10 @@ func TestUpdateWatermarkConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int, src string) {
 			defer wg.Done()
-			rec := connector.Record{Source: src, Time: base.Add(time.Duration(i) * time.Hour)}
-			if err := x.updateWatermark(src, "", false, []connector.Record{rec}); err != nil {
-				t.Errorf("updateWatermark(%s): %v", src, err)
+			at := base.Add(time.Duration(i) * time.Hour)
+			res := &testResumable{positions: map[string]connector.Position{"": {Cursor: at}}}
+			if err := x.savePositions(src, "", false, res); err != nil {
+				t.Errorf("savePositions(%s): %v", src, err)
 			}
 		}(i, src)
 	}
@@ -92,12 +112,114 @@ func TestUpdateWatermarkConcurrent(t *testing.T) {
 	for i, src := range sources {
 		wm, ok := st.Get(src, "")
 		if !ok {
-			t.Errorf("source %q cursor lost to a concurrent write", src)
+			t.Errorf("source %q positions lost to a concurrent write", src)
 			continue
 		}
-		if want := base.Add(time.Duration(i) * time.Hour); !wm.Cursor.Equal(want) {
-			t.Errorf("source %q cursor = %v, want %v", src, wm.Cursor, want)
+		if want := base.Add(time.Duration(i) * time.Hour); !wm.Units[""].Cursor.Equal(want) {
+			t.Errorf("source %q cursor = %v, want %v", src, wm.Units[""].Cursor, want)
 		}
+	}
+}
+
+// TestSavePositionsKeepsSkippedUnits verifies the rule the whole design rests
+// on. An incremental run that could not read a unit leaves that unit's position
+// where it was, so the next run reads it from there, and a full run that could
+// not read a unit leaves it with no position, so the next run reads it whole.
+func TestSavePositionsKeepsSkippedUnits(t *testing.T) {
+	t.Parallel()
+	clock := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	x := &Indexer{Dir: Dir(t.TempDir()), Now: func() time.Time { return clock }}
+	units := func() map[string]state.Unit {
+		t.Helper()
+		st, err := NewStore(x.Dir, nil).LoadState()
+		if err != nil {
+			t.Fatalf("LoadState: %v", err)
+		}
+		wm, _ := st.Get("slack", "public")
+		return wm.Units
+	}
+	full := &testResumable{positions: map[string]connector.Position{
+		"C1": {Mark: "100.000001"}, "C2": {Mark: "200.000001"},
+	}}
+	if err := x.savePositions("slack", "public", false, full); err != nil {
+		t.Fatalf("full read: %v", err)
+	}
+
+	// Test 0: An incremental run that skipped C2 moves C1 and leaves C2 alone.
+	clock = clock.Add(time.Hour)
+	partial := &testResumable{
+		positions: map[string]connector.Position{"C1": {Mark: "150.000001"}},
+		skipped:   []string{"C2"},
+	}
+	if err := x.savePositions("slack", "public", true, partial); err != nil {
+		t.Fatalf("incremental read: %v", err)
+	}
+	want := map[string]state.Unit{"C1": {Mark: "150.000001"}, "C2": {Mark: "200.000001"}}
+	if diff := cmp.Diff(want, units()); diff != "" {
+		t.Errorf("after a skipped unit (-want +got):\n%s", diff)
+	}
+	st, _ := NewStore(x.Dir, nil).LoadState()
+	if wm, _ := st.Get("slack", "public"); wm.Complete || !wm.FullAt.Equal(clock.Add(-time.Hour)) {
+		t.Errorf("complete = %v, full at = %v, want an incomplete run that keeps the full read's time",
+			wm.Complete, wm.FullAt)
+	}
+
+	// Test 1: A full run that skipped C2 leaves it with no position at all.
+	if err := x.savePositions("slack", "public", false, partial); err != nil {
+		t.Fatalf("second full read: %v", err)
+	}
+	want = map[string]state.Unit{"C1": {Mark: "150.000001"}}
+	if diff := cmp.Diff(want, units()); diff != "" {
+		t.Errorf("after a full read that skipped a unit (-want +got):\n%s", diff)
+	}
+}
+
+// TestResumeForcesAFullReadWhenDue verifies a run resumes from the saved
+// positions while the last full read is recent and reads in full once it is
+// older than the schedule allows, or when no position was ever saved.
+func TestResumeForcesAFullReadWhenDue(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		Saved           bool
+		After           time.Duration
+		WantIncremental bool
+	}{{ // Test 0: A full read from an hour ago resumes.
+		Saved: true, After: time.Hour, WantIncremental: true,
+	}, { // Test 1: A full read just inside the schedule resumes.
+		Saved: true, After: fullEvery, WantIncremental: true,
+	}, { // Test 2: A full read older than the schedule reads in full.
+		Saved: true, After: fullEvery + time.Minute, WantIncremental: false,
+	}, { // Test 3: Nothing saved reads in full.
+		Saved: false, After: time.Hour, WantIncremental: false,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			clock := start
+			x := &Indexer{Dir: Dir(t.TempDir()), Now: func() time.Time { return clock }}
+			if err := os.WriteFile(x.Dir.Index(), []byte("{}"), 0o600); err != nil {
+				t.Fatalf("write index: %v", err)
+			}
+			if test.Saved {
+				res := &testResumable{positions: map[string]connector.Position{"C1": {Mark: "100.000001"}}}
+				if err := x.savePositions("slack", "public", false, res); err != nil {
+					t.Fatalf("savePositions: %v", err)
+				}
+			}
+			clock = start.Add(test.After)
+			req := &IndexRequest{Source: "slack", IndexArgs: IndexArgs{Merge: true}}
+			positions, incremental, err := x.resume(req, true, "public")
+			if err != nil {
+				t.Fatalf("resume: %v", err)
+			}
+			if incremental != test.WantIncremental {
+				t.Errorf("incremental = %v, want %v", incremental, test.WantIncremental)
+			}
+			if incremental && positions["C1"].Mark != "100.000001" {
+				t.Errorf("positions = %v, want the saved mark for C1", positions)
+			}
+		})
 	}
 }
 

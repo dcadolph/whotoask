@@ -30,10 +30,13 @@ type JiraOptions struct {
 	// speaks the v2 API and authenticates with a bearer token or not at all,
 	// rather than Cloud's v3 API and email-plus-token.
 	Server bool
-	// Since, when set, limits the search to issues updated at or after it, read
-	// oldest first, for an incremental re-index. It is ignored when JQL overrides
-	// the query, since that query is authoritative.
-	Since time.Time
+	// Resume holds where an earlier read stopped, under the one unit a Jira read
+	// has, for an incremental re-index. With a cursor in it the search is limited
+	// to issues updated at or after that cursor, read oldest first, and an issue
+	// the earlier read already counted unchanged is left out. It is ignored when
+	// JQL overrides the query, since that query is authoritative. Nil reads in
+	// full.
+	Resume map[string]Position
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -62,7 +65,20 @@ type Jira struct {
 	opts JiraOptions
 	// episodes holds the resolved issues seen by the last Fetch.
 	episodes []episode.Episode
+	// position is where the last Fetch stopped.
+	position Position
 }
+
+// Positions returns where the most recent Fetch stopped, under the one unit a
+// Jira read has.
+func (j *Jira) Positions() map[string]Position { return singlePosition(j.position) }
+
+// Skipped returns nothing: a Jira read is one query, which either answers or
+// fails the whole run.
+func (j *Jira) Skipped() []string { return nil }
+
+// since returns the cursor an incremental read asks from, zero for a full read.
+func (j *Jira) since() time.Time { return j.opts.Resume[wholeSource].Cursor }
 
 // NewJira returns a Jira connector for the site, authenticating with an email
 // and API token.
@@ -98,6 +114,8 @@ func (j *Jira) Ping(ctx context.Context) error {
 // Fetch searches issues and returns one record per person, weighted by topic.
 func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	j.episodes = nil
+	j.position = Position{}
+	seen := newBoundary(j.opts.Resume[wholeSource], time.Now(), queryOverlap)
 	query := j.jql(j.client.UserLocation(ctx))
 	issues, err := j.client.Search(ctx, query, j.opts.MaxIssues)
 	switch {
@@ -145,13 +163,19 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	for _, is := range issues {
+		// The query reaches a little below the cursor, so the issues near it
+		// come back every run. One that has not changed since it was counted is
+		// left out, or its weight would grow on every refresh.
+		updated := jiraTime(is.Fields.Updated)
+		if seen.counted(is.Key, updated) {
+			continue
+		}
 		if j.opts.Episodes {
 			if ep, ok := issueEpisode(j.client.BaseURL(), is); ok {
 				j.episodes = append(j.episodes, ep)
 			}
 		}
 		tokens := issueTopics(is)
-		updated := jiraTime(is.Fields.Updated)
 		bump(is.Fields.Assignee, tokens, updated)
 		// One credit per person per issue: a ticket somebody filed and assigned
 		// to themselves is one piece of work, and counting the roles separately
@@ -187,6 +211,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		records = append(records, rec)
 	}
 	records = append(records, ties.records("jira")...)
+	j.position = seen.position()
 	return records, nil
 }
 
@@ -208,7 +233,7 @@ func jiraTime(s string) time.Time {
 }
 
 // jql returns the query: an explicit JQL, or a project scope, or all issues. An
-// incremental read (Since set) restricts to issues updated at or after the
+// incremental read (a saved cursor) restricts to issues updated at or after the
 // watermark and orders them oldest first, so a capped read leaves the newest
 // issues for the next run and never skips a gap; a full read keeps the
 // newest-first order that best fills a fresh index up to the cap.
@@ -224,13 +249,13 @@ func (j *Jira) jql(loc *time.Location) string {
 		}
 		scope = "project in (" + strings.Join(quoted, ",") + ")"
 	}
-	if !j.opts.Since.IsZero() {
+	if !j.since().IsZero() {
 		// JQL reads the wall-clock below in the user's profile timezone, so the
 		// instant is converted into that zone first. Without the zone the whole
 		// window shifts by the user's UTC offset, and a watermark that advances
 		// past the shift skips items for good. A nil location keeps the time as
 		// given, the old behavior.
-		since := j.opts.Since
+		since := j.since()
 		if loc != nil {
 			since = since.In(loc)
 		}

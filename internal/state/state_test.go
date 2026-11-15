@@ -1,6 +1,7 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -114,5 +115,68 @@ func TestWatermarkKeepsItsZone(t *testing.T) {
 		t.Errorf("cursor reads as %q, want the site's own clock %q: the zone was lost, "+
 			"so the next incremental read asks for the wrong hour",
 			got.Cursor.Format(wall), cursor.Format(wall))
+	}
+}
+
+// TestUnitsRoundTrip verifies the per-unit positions survive Save and Load, with
+// a unit cursor keeping the zone it was written in.
+func TestUnitsRoundTrip(t *testing.T) {
+	t.Parallel()
+	loc := time.FixedZone("IST", 5*3600+1800)
+	cursor := time.Date(2026, 8, 25, 14, 18, 2, 0, loc)
+	path := filepath.Join(t.TempDir(), "index.state.json")
+	wm := Watermark{
+		Source: "github", Scope: "org:acme", Cursor: fixedTime, RanAt: fixedTime, FullAt: fixedTime,
+		Units: map[string]Unit{
+			"acme/api": {Cursor: cursor, Seen: map[string]string{"pr:7": "2026-08-25T08:48:02Z"}},
+			"C123":     {Mark: "1712345678.000100"},
+		},
+	}
+	st := New()
+	st.Set(wm)
+	if err := st.Save(path, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	back, err := Load(path, nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got, _ := back.Get("github", "org:acme")
+	if diff := cmp.Diff(wm, got); diff != "" {
+		t.Errorf("watermark mismatch (-want +got):\n%s", diff)
+	}
+	const wall = "2006/01/02 15:04"
+	if got.Units["acme/api"].Cursor.Format(wall) != cursor.Format(wall) {
+		t.Errorf("unit cursor reads as %q, want the site's own clock %q",
+			got.Units["acme/api"].Cursor.Format(wall), cursor.Format(wall))
+	}
+}
+
+// TestLoadDropsVersionOneTimeCursors verifies a version 1 file loses its time
+// cursors, which could have stepped over a skipped unit, and keeps a git mark,
+// which is an exact position.
+func TestLoadDropsVersionOneTimeCursors(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "index.state.json")
+	old := `{"version":1,"watermarks":{` +
+		`"slack\u0000public":{"source":"slack","scope":"public","cursor":"2026-08-18T12:00:00Z",` +
+		`"complete":true,"ran_at":"2026-08-18T12:00:00Z"},` +
+		`"git\u0000repo:/src/api":{"source":"git","scope":"repo:/src/api","cursor":"0001-01-01T00:00:00Z",` +
+		`"complete":true,"ran_at":"2026-08-18T12:00:00Z","mark":"abc123"}}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	st, err := Load(path, nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := st.Get("slack", "public"); ok {
+		t.Error("the version 1 slack time cursor survived the load, so the next run would resume from it")
+	}
+	if wm, ok := st.Get("git", "repo:/src/api"); !ok || wm.Mark != "abc123" {
+		t.Errorf("git mark = %+v, %v, want it kept with mark abc123", wm, ok)
+	}
+	if st.Version != Version {
+		t.Errorf("version = %d, want %d", st.Version, Version)
 	}
 }

@@ -76,7 +76,8 @@ Save runs about six times the cold start at every size measured.
 That has a consequence worth stating plainly, because the incremental refresh
 section below is easy to over-read. Fetching is bounded by the delta: Jira,
 Confluence, GitHub, and Slack query for what changed since the stored
-watermark, and git resumes from the last commit read per repository. The write
+position, kept per channel and per repository, and git resumes from the last
+commit read per repository. The write
 is not. A refresh that reads three new commits still re-encodes and rewrites
 the whole index, and pays the full save cost in the table above. Reading a
 delta and writing a corpus is the current shape.

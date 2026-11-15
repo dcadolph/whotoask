@@ -25,7 +25,7 @@ func TestJQLUsesUserTimezone(t *testing.T) {
 		t.Fatalf("LoadLocation: %v", err)
 	}
 	since := time.Date(2026, 3, 4, 20, 0, 0, 0, time.UTC)
-	j := &Jira{opts: JiraOptions{Since: since}.withDefaults()}
+	j := &Jira{opts: JiraOptions{Resume: map[string]Position{wholeSource: {Cursor: since}}}.withDefaults()}
 	got := j.jql(loc)
 	if want := `updated >= "2026/03/05 09:58"`; !strings.Contains(got, want) {
 		t.Errorf("jql = %q, want it to contain %q", got, want)
@@ -210,23 +210,23 @@ func TestJiraTime(t *testing.T) {
 // explicit JQL untouched.
 func TestJiraJQL(t *testing.T) {
 	t.Parallel()
-	since := time.Date(2026, 3, 4, 9, 30, 0, 0, time.UTC)
+	since := map[string]Position{wholeSource: {Cursor: time.Date(2026, 3, 4, 9, 30, 0, 0, time.UTC)}}
 	tests := []struct {
 		Name      string
 		Opts      JiraOptions
 		WantHas   []string
 		WantLacks []string
 	}{{ // Test 0: Incremental with a project scope.
-		Name: "incremental with projects", Opts: JiraOptions{Projects: []string{"SEC"}, Since: since},
+		Name: "incremental with projects", Opts: JiraOptions{Projects: []string{"SEC"}, Resume: since},
 		WantHas: []string{`project in ("SEC")`, `updated >= "2026/03/04 09:28"`, "ORDER BY updated ASC"},
 	}, { // Test 1: Incremental with no scope.
-		Name: "incremental no projects", Opts: JiraOptions{Since: since},
+		Name: "incremental no projects", Opts: JiraOptions{Resume: since},
 		WantHas: []string{`updated >= "2026/03/04 09:28"`, "ORDER BY updated ASC"}, WantLacks: []string{"project in"},
 	}, { // Test 2: A full read keeps newest-first and adds no since clause.
 		Name: "full with projects", Opts: JiraOptions{Projects: []string{"SEC"}},
 		WantHas: []string{`project in ("SEC")`, "ORDER BY updated DESC"}, WantLacks: []string{"updated >="},
-	}, { // Test 3: An explicit JQL is authoritative and ignores Since.
-		Name: "explicit jql", Opts: JiraOptions{JQL: "assignee = currentUser() ORDER BY created DESC", Since: since},
+	}, { // Test 3: An explicit JQL is authoritative and ignores the cursor.
+		Name: "explicit jql", Opts: JiraOptions{JQL: "assignee = currentUser() ORDER BY created DESC", Resume: since},
 		WantHas: []string{"assignee = currentUser() ORDER BY created DESC"}, WantLacks: []string{"updated >=", "ASC"},
 	}}
 	for _, test := range tests {

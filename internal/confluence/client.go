@@ -167,6 +167,8 @@ type label struct {
 
 // Page is the subset of a content page whotoask reads.
 type Page struct {
+	// ID is the page's content id, unique within the site.
+	ID string `json:"id"`
 	// Title is the page title.
 	Title string `json:"title"`
 	// Space is the page's space.

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -26,9 +27,12 @@ type ConfluenceOptions struct {
 	// serves the REST API at the site root and authenticates with a bearer
 	// token or not at all, rather than Cloud's /wiki path and email-plus-token.
 	Server bool
-	// Since, when set, limits the read to pages last modified at or after it, for
-	// an incremental re-index. It is ignored when CQL overrides the query.
-	Since time.Time
+	// Resume holds where an earlier read stopped, under the one unit a
+	// Confluence read has, for an incremental re-index. With a cursor in it the
+	// read is limited to pages last modified at or after that cursor, and a page
+	// the earlier read already counted unchanged is left out. It is ignored
+	// when CQL overrides the query. Nil reads in full.
+	Resume map[string]Position
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -51,7 +55,17 @@ type Confluence struct {
 	client *confluence.Client
 	// opts holds the resolved options.
 	opts ConfluenceOptions
+	// position is where the last Fetch stopped.
+	position Position
 }
+
+// Positions returns where the most recent Fetch stopped, under the one unit a
+// Confluence read has.
+func (c *Confluence) Positions() map[string]Position { return singlePosition(c.position) }
+
+// Skipped returns nothing: a Confluence read is one query, which either answers
+// or fails the whole run.
+func (c *Confluence) Skipped() []string { return nil }
 
 // confluenceProgressEvery reports progress each time this many more pages
 // arrive.
@@ -89,7 +103,10 @@ func (c *Confluence) Ping(ctx context.Context) error {
 
 // Fetch searches pages and returns one record per person, weighted by topic.
 func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
-	q := confluence.Query{Spaces: c.opts.Spaces, CQL: c.opts.CQL, Max: c.opts.MaxPages, Since: c.opts.Since}
+	c.position = Position{}
+	prev := c.opts.Resume[wholeSource]
+	seen := newBoundary(prev, time.Now(), queryOverlap)
+	q := confluence.Query{Spaces: c.opts.Spaces, CQL: c.opts.CQL, Max: c.opts.MaxPages, Since: prev.Cursor}
 	pages, err := c.client.Pages(ctx, q)
 	switch {
 	case errors.Is(err, confluence.ErrTruncated):
@@ -134,6 +151,12 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	for _, page := range pages {
+		// The query reaches a little below the cursor, so the pages near it
+		// come back every run. One that has not changed since it was counted is
+		// left out, or its weight would grow on every refresh.
+		if seen.counted(cmp.Or(page.ID, page.Space.Key+"/"+page.Title), page.Version.When) {
+			continue
+		}
 		tokens := pageTopics(page)
 		stated := make([]string, 0, 4)
 		for _, tok := range page.LabelNames() {
@@ -180,6 +203,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		records = append(records, rec)
 	}
 	records = append(records, ties.records("confluence")...)
+	c.position = seen.position()
 	return records, nil
 }
 

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"maps"
 	"time"
 
 	"github.com/dcadolph/whotoask/internal/connector"
@@ -41,43 +42,52 @@ func incrementalCapable(source string) bool {
 	return ok && spec.Incremental
 }
 
-// watermark decides whether this run is incremental: a merge into an existing
-// index of a source that supports it, with a saved watermark and no --full.
-// When so it returns the watermark, so the run fetches only what changed since
-// and folds it in rather than re-reading the whole source.
-func (x *Indexer) watermark(req *IndexRequest, canInc bool, scope string) (time.Time, bool, error) {
+// fullEvery is how long a source goes between full reads. An incremental read
+// counts an item again each time it is edited, and only a full read replaces
+// what the source holds with one clean count, so one is forced on this
+// schedule to keep that drift bounded.
+const fullEvery = 7 * 24 * time.Hour
+
+// resume decides whether this run is incremental: a merge into an existing
+// index of a source that supports it, with saved positions, a full read recent
+// enough, and no --full. When so it returns where the last read stopped in
+// each unit, so the run fetches only what changed since and folds it in rather
+// than re-reading the whole source.
+func (x *Indexer) resume(
+	req *IndexRequest, canInc bool, scope string,
+) (map[string]connector.Position, bool, error) {
 	if !req.Merge || req.Full || !canInc || !x.indexExists() {
-		return time.Time{}, false, nil
+		return nil, false, nil
 	}
 	st, err := x.loadState()
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, false, err
 	}
-	if wm, ok := st.Get(req.Source, scope); ok {
-		return wm.Cursor, true, nil
+	wm, ok := st.Get(req.Source, scope)
+	if !ok || wm.Units == nil || x.now().Sub(wm.FullAt) > fullEvery {
+		return nil, false, nil
 	}
-	return time.Time{}, false, nil
+	positions := make(map[string]connector.Position, len(wm.Units))
+	for unit, u := range wm.Units {
+		positions[unit] = connector.Position{Cursor: u.Cursor, Mark: u.Mark, Seen: u.Seen}
+	}
+	return positions, true, nil
 }
 
-// updateWatermark advances a source's incremental watermark to the newest
-// activity just indexed, after a successful run. It never moves the cursor
-// backward, and does nothing for a source without incremental support or a
-// read that saw nothing dated.
-func (x *Indexer) updateWatermark(source, scope string, full bool, recs []connector.Record) error {
-	if !incrementalCapable(source) {
-		return nil
-	}
-	var cursor time.Time
-	for _, r := range recs {
-		if r.Time.After(cursor) {
-			cursor = r.Time
-		}
-	}
-	if cursor.IsZero() {
+// savePositions records where a source's read stopped in each unit, after a
+// successful index. The source reports its own positions, since only it knows
+// which units it read to the end. An incremental run adds the units it finished
+// to the saved set, so a unit it skipped keeps its old position and the next
+// run resumes it from where it really stopped. A full run replaces the set, so
+// a unit it skipped has no position and the next run reads it from the start.
+// It does nothing for a source that does not report positions.
+func (x *Indexer) savePositions(source, scope string, incremental bool, src connector.Source) error {
+	res, ok := src.(connector.Resumable)
+	if !ok || !incrementalCapable(source) {
 		return nil
 	}
 	// Serialize the read-modify-write on the state file, so two concurrent
-	// index runs against different sources cannot drop each other's cursor.
+	// index runs against different sources cannot drop each other's positions.
 	unlock, err := util.LockFile(x.Dir.State() + util.LockSuffix)
 	if err != nil {
 		return err
@@ -91,12 +101,24 @@ func (x *Indexer) updateWatermark(source, scope string, full bool, recs []connec
 	if err != nil {
 		return err
 	}
-	// A partial read only ever adds newer activity, so never let its cursor fall
-	// behind the stored one; a full read is authoritative and replaces it.
-	if prev, ok := st.Get(source, scope); ok && !full && prev.Cursor.After(cursor) {
-		cursor = prev.Cursor
+	now := x.now()
+	wm := state.Watermark{
+		Source: source, Scope: scope, RanAt: now, FullAt: now,
+		Complete: len(res.Skipped()) == 0, Units: make(map[string]state.Unit),
 	}
-	st.Set(state.Watermark{Source: source, Scope: scope, Cursor: cursor, Complete: true, RanAt: x.now()})
+	if prev, ok := st.Get(source, scope); ok && incremental {
+		wm.FullAt = prev.FullAt
+		maps.Copy(wm.Units, prev.Units)
+	}
+	for unit, p := range res.Positions() {
+		wm.Units[unit] = state.Unit{Cursor: p.Cursor, Mark: p.Mark, Seen: p.Seen}
+	}
+	for _, u := range wm.Units {
+		if u.Cursor.After(wm.Cursor) {
+			wm.Cursor = u.Cursor
+		}
+	}
+	st.Set(wm)
 	return store.SaveState(st)
 }
 

@@ -10,6 +10,8 @@ import (
 // Issue is the subset of an issue whotoask reads. The GitHub issues endpoint also
 // returns pull requests; IsPullRequest distinguishes them.
 type Issue struct {
+	// Number is the issue number, unique within its repository.
+	Number int `json:"number"`
 	// Title is the issue title.
 	Title string `json:"title"`
 	// User is the author.

@@ -88,6 +88,9 @@ type Outcome struct {
 	People int `json:"people"`
 	// Channels is how many distinct channels the source holds after the run.
 	Channels int `json:"channels"`
+	// Skipped is how many units of the source, such as channels or repositories,
+	// the run could not read. Each keeps its place and is read by a later run.
+	Skipped int `json:"skipped,omitempty"`
 }
 
 // heldRecords returns what ix holds after a fold for source and for every source
@@ -196,7 +199,7 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 	// that would stack a copy every run, so such a source is never treated
 	// as incremental: it replaces on every merge, as a full read does.
 	canInc := incrementalCapable(req.Source) && !UsesExplicitQuery(req.Source, req.JiraJQL, req.ConfluenceCQL)
-	since, incremental, err := x.watermark(&req, canInc, scope)
+	resume, incremental, err := x.resume(&req, canInc, scope)
 	if err != nil {
 		return err
 	}
@@ -215,7 +218,7 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 	if !ok {
 		return fmt.Errorf("%w: %q (want %s)", ErrUnknownSource, req.Source, SourceNames())
 	}
-	o := req.sourceOptions(x, since, gitStops)
+	o := req.sourceOptions(x, resume, gitStops)
 	o.Creds = x.resolveCreds(spec)
 	recs, eps, src, err := FetchSource(ctx, spec, o)
 	// Git resumes from a commit rather than a time, so it carries its own
@@ -228,6 +231,9 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 	}
 	if err != nil {
 		return err
+	}
+	if res, ok := src.(connector.Resumable); ok {
+		out.Skipped = len(res.Skipped())
 	}
 	// A connector may hand back what it read before a cancel with no error. Folding
 	// that would store a partial read as complete.
@@ -243,7 +249,7 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 		return err
 	}
 	out.People, out.Channels = countRecords(ix, heldRecords(ix, req.Source, recs))
-	if err := x.saveProgress(&req, scope, canInc, gitAfter, recs); err != nil {
+	if err := x.saveProgress(&req, scope, canInc, incremental, gitAfter, src); err != nil {
 		return err
 	}
 	if x.Outcome != nil {
@@ -260,7 +266,7 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 // replaced the first and the weekly refresh let A go stale forever. Saving it
 // is best-effort: a failure warns but does not fail the index.
 func (x *Indexer) saveProgress(
-	req *IndexRequest, scope string, canInc bool, gitAfter map[string]string, recs []connector.Record,
+	req *IndexRequest, scope string, canInc, incremental bool, gitAfter map[string]string, src connector.Source,
 ) error {
 	if x.Record != nil {
 		rscope := RefreshScope(req.Source, scope, req.File, req.RepoPaths)
@@ -274,23 +280,25 @@ func (x *Indexer) saveProgress(
 			fmt.Fprintf(x.log(), "warning: could not save the git position: %v\n", err)
 		}
 	}
-	// Advance the incremental watermark only after a successful index, so a
-	// failed run never moves it.
+	// Save the positions only after a successful index, so a failed run never
+	// moves them.
 	if canInc && req.Source != "git" {
-		return x.updateWatermark(req.Source, scope, req.Full, recs)
+		return x.savePositions(req.Source, scope, incremental, src)
 	}
 	return nil
 }
 
 // sourceOptions turns the flags into the registry's plain source options. The
 // credentials are resolved separately, for the chosen source only.
-func (r *IndexRequest) sourceOptions(x *Indexer, since time.Time, gitStops map[string]string) SourceOptions {
+func (r *IndexRequest) sourceOptions(
+	x *Indexer, resume map[string]connector.Position, gitStops map[string]string,
+) SourceOptions {
 	episodes := r.Episodes || r.Archive
 	return SourceOptions{
 		File:                 r.File,
 		Stdin:                x.Stdin,
 		Log:                  x.log(),
-		Since:                since,
+		Resume:               resume,
 		AllowPrivateChannels: x.Policy.AllowPrivateChannels(),
 		Slack: connector.SlackOptions{
 			IncludePrivate: r.IncludePrivate, JoinPublic: r.SlackJoin,

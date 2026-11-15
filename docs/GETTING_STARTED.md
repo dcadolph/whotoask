@@ -545,10 +545,13 @@ the full diff as JSON for a script or a report.
 
 Re-indexing Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
 fetches only what changed since the last run and folds it in, so a scheduled
-refresh stays fast on a large tracker or workspace. A per-source watermark is
-kept beside the index. Add `--full` to re-read everything and recompact, which
-also picks up the few things an incremental run skips, such as a Slack message
-edited after the window. Other sources always read in full.
+refresh stays fast on a large tracker or workspace. Where each read stopped is
+kept beside the index, for each Slack channel and each GitHub repository on its
+own, so one that could not be read is picked up where it stopped on the next
+run. Add `--full` to re-read everything and recompact, which also picks up the
+few things an incremental run skips, such as a Slack message edited after the
+window. A `--merge` run does this by itself once a week. Other sources always
+read in full.
 
 ## Joining one person across sources
 

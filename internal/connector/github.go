@@ -56,10 +56,15 @@ type GitHubOptions struct {
 	// Episodes records merged changes, so recall can point back at the change
 	// that fixed something.
 	Episodes bool
-	// Since, when set, restricts an incremental re-index to pull requests and
-	// issues updated at or after it, and skips the whole-repo contributor and
-	// CODEOWNERS snapshots, whose weight would double if folded again.
-	Since time.Time
+	// Resume holds where an earlier read stopped in each repository, keyed by
+	// the lowercase "owner/name", for an incremental re-index. A repository in
+	// it is read from its cursor: only pull requests and issues updated at or
+	// after it, without the whole-repo contributor and CODEOWNERS snapshots,
+	// whose weight would double if folded again. A repository missing from it
+	// is read whole, which is how a repository new to the org, or one an
+	// earlier run could not read, gets its history. Nil reads every repository
+	// whole.
+	Resume map[string]Position
 	// MaxPages raises how many pages each listing may walk. Zero keeps the
 	// client default, which bounds a scheduled run; an assessment reads a
 	// repository once and asks for depth deliberately.
@@ -95,8 +100,98 @@ type GitHub struct {
 	// commented. Held so review credit can be placed against the directories
 	// the pull request changed, which the git history already knows.
 	pullPeople map[PullRef][]string
-	// pullMu guards pullPeople, which repositories fill concurrently.
-	pullMu sync.Mutex
+	// positions holds where the last Fetch stopped in each repository it read.
+	positions map[string]Position
+	// skipped names the repositories the last Fetch could not read.
+	skipped []string
+}
+
+// Positions returns where the most recent Fetch stopped in each repository it
+// read to the end, keyed by the lowercase "owner/name".
+func (g *GitHub) Positions() map[string]Position { return clonePositions(g.positions) }
+
+// Skipped names the repositories the most recent Fetch could not read.
+func (g *GitHub) Skipped() []string { return slices.Clone(g.skipped) }
+
+// repoUnit returns the key a repository's position is saved under.
+func repoUnit(full string) string { return strings.ToLower(full) }
+
+// repoTally is what reading one repository adds to the people it names. Each
+// repository fills its own, and the parent takes it only once the repository
+// was read to the end. A repository that failed halfway therefore adds
+// nothing, and reading it again from its saved position counts nothing twice.
+type repoTally struct {
+	// counts maps a login to how often each token was seen for it.
+	counts map[string]map[string]int
+	// latest maps a login to its most recent activity.
+	latest map[string]time.Time
+	// curated holds the tokens some repository, pull request, or issue stated
+	// as a topic or label. Everything else mined from a name, title, or
+	// description stays weak.
+	curated map[string]bool
+	// pulls records, per pull request, everyone who took part in it.
+	pulls map[PullRef][]string
+}
+
+// newRepoTally returns an empty tally.
+func newRepoTally() *repoTally {
+	return &repoTally{
+		counts:  make(map[string]map[string]int),
+		latest:  make(map[string]time.Time),
+		curated: make(map[string]bool),
+		pulls:   make(map[PullRef][]string),
+	}
+}
+
+// markCurated records tokens as stated topics.
+func (t *repoTally) markCurated(tokens []string) {
+	for _, tok := range tokens {
+		if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+			t.curated[tok] = true
+		}
+	}
+}
+
+// bump credits login with tokens for activity at the given time. Automation
+// accounts are left out.
+func (t *repoTally) bump(login string, tokens []string, at time.Time) {
+	if login == "" || len(tokens) == 0 || strings.HasSuffix(login, "[bot]") {
+		return
+	}
+	c := t.counts[login]
+	if c == nil {
+		c = make(map[string]int)
+		t.counts[login] = c
+	}
+	for _, tok := range tokens {
+		if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+			c[tok]++
+		}
+	}
+	if at.After(t.latest[login]) {
+		t.latest[login] = at
+	}
+}
+
+// absorb adds everything other holds into t.
+func (t *repoTally) absorb(other *repoTally) {
+	for login, tokens := range other.counts {
+		c := t.counts[login]
+		if c == nil {
+			c = make(map[string]int)
+			t.counts[login] = c
+		}
+		for tok, n := range tokens {
+			c[tok] += n
+		}
+	}
+	for login, at := range other.latest {
+		if at.After(t.latest[login]) {
+			t.latest[login] = at
+		}
+	}
+	maps.Copy(t.curated, other.curated)
+	maps.Copy(t.pulls, other.pulls)
 }
 
 // PullPeople returns, per pull request, the logins of everyone who took part.
@@ -137,6 +232,8 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 	// A fresh map, not a merge: participants kept from an earlier Fetch would
 	// collect review credit for pull requests this fetch never saw.
 	g.pullPeople = make(map[PullRef][]string)
+	g.positions = make(map[string]Position)
+	g.skipped = nil
 	repos, err := g.repoList(ctx)
 	if err != nil {
 		return nil, err
@@ -146,41 +243,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 	// tallies and to the log writer, which a test may back with a plain buffer.
 	g.opts.Log = &lockedWriter{w: g.opts.Log}
 	var mu sync.Mutex
-
-	counts := make(map[string]map[string]int) // login -> token -> count
-	latest := make(map[string]time.Time)      // login -> most recent activity
-	// Tokens some repository, pull request, or issue stated as a topic or label.
-	// Everything else mined from a name, title, or description stays weak.
-	curated := make(map[string]bool)
-	markCurated := func(tokens []string) {
-		mu.Lock()
-		defer mu.Unlock()
-		for _, tok := range tokens {
-			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
-				curated[tok] = true
-			}
-		}
-	}
-	bump := func(login string, tokens []string, t time.Time) {
-		if login == "" || len(tokens) == 0 || strings.HasSuffix(login, "[bot]") {
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		c := counts[login]
-		if c == nil {
-			c = make(map[string]int)
-			counts[login] = c
-		}
-		for _, tok := range tokens {
-			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
-				c[tok]++
-			}
-		}
-		if t.After(latest[login]) {
-			latest[login] = t
-		}
-	}
+	total := newRepoTally()
 
 	// Per-repo results land in slots indexed by the repo's position, so the
 	// combined output follows the input order however the workers finish;
@@ -215,17 +278,35 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			local := newTogether()
-			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump, markCurated, local)
-			results[i] = repoResult{recs: recs, eps: eps}
-			mu.Lock()
-			ties.absorb(local)
-			mu.Unlock()
-			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
+			tally := newRepoTally()
+			recs, eps, pos, err := g.indexRepo(ctx, full, owner, name, tally, local)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return
 			}
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				// Nothing this repository added is kept and its position does
+				// not move, so the next run reads it from where it really
+				// stopped.
+				g.skipped = append(g.skipped, full)
+				fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
+				return
+			}
+			results[i] = repoResult{recs: recs, eps: eps}
+			ties.absorb(local)
+			total.absorb(tally)
+			g.positions[repoUnit(full)] = pos
 		}(i, full, owner, name)
 	}
 	wg.Wait()
+	slices.Sort(g.skipped)
+	g.pullPeople = total.pulls
+	if len(g.skipped) > 0 {
+		fmt.Fprintf(g.opts.Log,
+			"github: %d repositories could not be read this time; the next refresh picks each one up "+
+				"where it stopped\n", len(g.skipped))
+	}
 	var codeOwnerRecords []Record
 	for _, r := range results {
 		codeOwnerRecords = append(codeOwnerRecords, r.recs...)
@@ -235,14 +316,14 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		return nil, err
 	}
 
-	accounts := g.resolveAccounts(ctx, counts)
+	accounts := g.resolveAccounts(ctx, total.counts)
 
-	records := make([]Record, 0, len(counts)+len(codeOwnerRecords))
-	for _, login := range slices.Sorted(maps.Keys(counts)) {
-		tokenCounts := counts[login]
+	records := make([]Record, 0, len(total.counts)+len(codeOwnerRecords))
+	for _, login := range slices.Sorted(maps.Keys(total.counts)) {
+		tokenCounts := total.counts[login]
 		rec := githubPersonRecord(login, nil, accounts[login])
-		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(tokenCounts), curated)
-		rec.Time = latest[login]
+		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(tokenCounts), total.curated)
+		rec.Time = total.latest[login]
 		records = append(records, rec)
 	}
 	records = append(records, codeOwnerRecords...)
@@ -251,29 +332,35 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 }
 
 // indexRepo tallies one repository's contributors, pull requests, issues, and
-// CODEOWNERS through bump, returning that repo's CODEOWNERS records. A truncated
-// listing is indexed as a partial set with a warning. A hard error is returned
-// so the caller can skip this repo, or abort on context cancellation, without
+// CODEOWNERS into tally, returning that repo's CODEOWNERS records, its episodes,
+// and the position the next read of it resumes from. A truncated listing is
+// indexed as a partial set with a warning. A hard error is returned so the
+// caller can skip this repo, or abort on context cancellation, without
 // discarding the repos already indexed.
 func (g *GitHub) indexRepo(
-	ctx context.Context, full, owner, name string, bump func(string, []string, time.Time),
-	markCurated func([]string), ties *togetherIndex,
-) ([]Record, []episode.Episode, error) {
+	ctx context.Context, full, owner, name string, tally *repoTally, ties *togetherIndex,
+) ([]Record, []episode.Episode, Position, error) {
+	// A repository with no saved cursor is read whole even inside an
+	// incremental run: nothing is held for it, so folding its full read is
+	// right, and it is the only way its history ever arrives.
+	prev := g.opts.Resume[repoUnit(full)]
+	incremental := !prev.Cursor.IsZero()
+	seen := newBoundary(prev, time.Now().UTC(), 0)
 	repo, err := g.client.Repo(ctx, owner, name)
 	if err != nil {
-		return nil, nil, fmt.Errorf("repo: %w", err)
+		return nil, nil, Position{}, fmt.Errorf("repo: %w", err)
 	}
 	// Contributors is a whole-repo snapshot with no since filter, so re-folding
 	// it on an incremental run would add each repo topic to every contributor
 	// again. Skip it when reading incrementally; those people are preserved from
 	// the last full run, and a periodic --full recompacts.
 	var conCount int
-	if g.opts.Since.IsZero() {
+	if !incremental {
 		repoTokens := repoTopicSet(repo)
-		markCurated(repo.Topics)
+		tally.markCurated(repo.Topics)
 		cons, err := g.client.Contributors(ctx, owner, name)
 		if e := g.usable(full, "contributors", len(cons), err); e != nil {
-			return nil, nil, fmt.Errorf("contributors: %w", e)
+			return nil, nil, Position{}, fmt.Errorf("contributors: %w", e)
 		}
 		conCount = len(cons)
 		for _, c := range cons {
@@ -283,22 +370,27 @@ func (g *GitHub) indexRepo(
 			if c.IsBot() {
 				continue
 			}
-			bump(c.Login, repoTokens, time.Time{})
+			tally.bump(c.Login, repoTokens, time.Time{})
 		}
 	}
 
 	var episodes []episode.Episode
 	pulls, err := g.client.PullRequests(ctx, owner, name)
 	if e := g.usable(full, "pulls", len(pulls), err); e != nil {
-		return nil, nil, fmt.Errorf("pulls: %w", e)
+		return nil, nil, Position{}, fmt.Errorf("pulls: %w", e)
 	}
 	for _, pr := range pulls {
 		// Pulls come newest-first, so on an incremental run stop at the first one
-		// older than the watermark; only changed pulls are folded again.
-		if !g.opts.Since.IsZero() && pr.UpdatedAt.Before(g.opts.Since) {
+		// older than the cursor; only changed pulls are folded again.
+		if incremental && pr.UpdatedAt.Before(prev.Cursor) {
 			break
 		}
-		markCurated(pr.LabelNames())
+		// The cursor is inclusive, so the pull requests at it come back every
+		// run. One that has not changed since it was counted is left out.
+		if seen.counted(fmt.Sprintf("pr:%d", pr.Number), pr.UpdatedAt) {
+			continue
+		}
+		tally.markCurated(pr.LabelNames())
 		// Only the labels are paired. A title is prose, and pairing its words
 		// would tie a subject to every turn of phrase used near it.
 		ties.note(pr.LabelNames(), pr.Author(), full)
@@ -319,11 +411,9 @@ func (g *GitHub) indexRepo(
 		// counted three times, which tripled every self-managed ticket.
 		people := util.Distinct(took, func(s string) string { return s })
 		for _, u := range people {
-			bump(u, tokens, pr.UpdatedAt)
+			tally.bump(u, tokens, pr.UpdatedAt)
 		}
-		g.pullMu.Lock()
-		g.pullPeople[PullRef{Repo: strings.ToLower(owner + "/" + name), Number: pr.Number}] = people
-		g.pullMu.Unlock()
+		tally.pulls[PullRef{Repo: strings.ToLower(owner + "/" + name), Number: pr.Number}] = people
 		if g.opts.Episodes {
 			if ep, ok := changeEpisode(owner, name, pr, helpers); ok {
 				episodes = append(episodes, ep)
@@ -331,26 +421,35 @@ func (g *GitHub) indexRepo(
 		}
 	}
 
-	issues, err := g.client.Issues(ctx, owner, name, g.opts.Since)
+	issues, err := g.client.Issues(ctx, owner, name, prev.Cursor)
+	if errors.Is(err, github.ErrNotFound) {
+		// A repository with its issue tracker turned off has no issues to
+		// read. That is a complete read, not a failed one.
+		issues, err = nil, nil
+	}
 	if e := g.usable(full, "issues", len(issues), err); e != nil {
-		// Preserve the episodes already gathered from the pull requests: they
-		// were read successfully, and a later failure should not discard them.
-		return nil, episodes, fmt.Errorf("issues: %w", e)
+		// The pull requests read so far are dropped with the rest. The
+		// repository keeps its old position, so the next run reads them again
+		// and keeping them now would count them twice.
+		return nil, nil, Position{}, fmt.Errorf("issues: %w", e)
 	}
 	var issueCount int
 	for _, is := range issues {
 		if is.IsPullRequest() {
 			continue
 		}
+		if seen.counted(fmt.Sprintf("issue:%d", is.Number), is.UpdatedAt) {
+			continue
+		}
 		issueCount++
-		markCurated(is.LabelNames())
+		tally.markCurated(is.LabelNames())
 		ties.note(is.LabelNames(), is.Author(), full)
 		tokens := append(is.LabelNames(), phraseTokens(is.Title)...)
 		// One credit per person per issue: a self-assigned issue is one piece
 		// of work, not two.
 		took := append([]string{is.Author()}, is.AssigneeLogins()...)
 		for _, u := range util.Distinct(took, func(s string) string { return s }) {
-			bump(u, tokens, is.UpdatedAt)
+			tally.bump(u, tokens, is.UpdatedAt)
 		}
 	}
 
@@ -358,12 +457,12 @@ func (g *GitHub) indexRepo(
 	// so like contributors it is skipped on an incremental run to avoid folding
 	// its weight twice.
 	var codeOwnerRecords []Record
-	if g.opts.Since.IsZero() {
+	if !incremental {
 		if content := g.codeOwners(ctx, owner, name); content != nil {
 			recs, err := parseCodeOwners(ctx, bytes.NewReader(content))
 			switch {
 			case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
-				return codeOwnerRecords, episodes, err
+				return nil, nil, Position{}, err
 			case err != nil:
 				fmt.Fprintf(g.opts.Log, "github: %s CODEOWNERS parse failed: %v\n", full, err)
 			default:
@@ -373,7 +472,14 @@ func (g *GitHub) indexRepo(
 	}
 	fmt.Fprintf(g.opts.Log, "github: indexed %s (%d contributors, %d pulls, %d issues)\n",
 		full, conCount, len(pulls), issueCount)
-	return codeOwnerRecords, episodes, nil
+	pos := seen.position()
+	if pos.Cursor.IsZero() {
+		// A repository with no dated pull request or issue was still read to
+		// the end. Without a cursor the next run would read it whole again and
+		// count its contributors twice.
+		pos.Cursor = seen.limit
+	}
+	return codeOwnerRecords, episodes, pos, nil
 }
 
 // usable reports whether a listing error is tolerable. A nil error and a

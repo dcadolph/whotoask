@@ -58,10 +58,13 @@ type SlackOptions struct {
 	// MaxArchiveMessages caps retained messages per conversation; zero uses
 	// the default.
 	MaxArchiveMessages int
-	// Since, when later than the SinceDays window, reads only messages posted at
-	// or after it, for an incremental re-index. Identity records (users) carry no
-	// weight, so only the message-derived topics narrow to the delta.
-	Since time.Time
+	// Resume holds where an earlier read stopped in each channel, keyed by
+	// channel ID, for an incremental re-index. A channel in it is read from its
+	// mark, and a channel missing from it is read over the whole SinceDays
+	// window, which is how a channel the bot was just invited to gets its
+	// history. Nil reads every channel over the window. Identity records (users)
+	// carry no weight, so only the message-derived topics narrow to the delta.
+	Resume map[string]Position
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -88,7 +91,20 @@ type Slack struct {
 	opts SlackOptions
 	// episodes holds the conversations seen by the last Fetch.
 	episodes []episode.Episode
+	// positions holds where the last Fetch stopped in each channel it read.
+	positions map[string]Position
+	// skipped names the channels the last Fetch could not read.
+	skipped []string
 }
+
+// Positions returns where the most recent Fetch stopped in each channel it read
+// to the end, keyed by channel ID.
+func (s *Slack) Positions() map[string]Position { return clonePositions(s.positions) }
+
+// Skipped names the channels the most recent Fetch could not read because of
+// rate limiting or an outage. A channel the bot is not a member of is not one
+// of them: it has nothing to resume, and is read whole once the bot is invited.
+func (s *Slack) Skipped() []string { return slices.Clone(s.skipped) }
 
 // NewSlack returns a Slack connector authenticating with token.
 func NewSlack(token string, opts SlackOptions) *Slack {
@@ -179,19 +195,21 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	if s.opts.Episodes {
 		s.episodes = nil
 	}
-	oldest := slackOldestSince(s.opts.SinceDays, s.opts.Since)
+	window := slackTS(time.Now().AddDate(0, 0, -s.opts.SinceDays))
+	s.positions = make(map[string]Position)
+	s.skipped = nil
 	skipped, read, notInChannel := 0, 0, 0
 	joined := 0
-	// maxConsecThrottle stops a run only when the whole workspace is hard rate
-	// limited, not on a single slow channel.
-	const maxConsecThrottle = 5
-	consecThrottle := 0
-	var unfinished []string
+	// maxConsecFailed stops a run only when the whole workspace is hard rate
+	// limited or unreachable, not on a single slow channel.
+	const maxConsecFailed = 5
+	consecFailed := 0
+	var lastFailure error
+	if s.opts.MaxChannels > 0 && len(channels) > s.opts.MaxChannels {
+		fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
+		channels = channels[:s.opts.MaxChannels]
+	}
 	for i, ch := range channels {
-		if s.opts.MaxChannels > 0 && i >= s.opts.MaxChannels {
-			fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
-			break
-		}
 		// Self-join a public channel the bot is not in yet, so the whole
 		// workspace indexes without hand invites. A private channel cannot be
 		// self-joined; only a member can add the bot there.
@@ -202,30 +220,19 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				joined++
 			}
 		}
+		// Each channel resumes from its own mark. One time for the whole
+		// workspace stepped over a message posted to a channel already read
+		// while a later channel was still being read.
+		oldest := slackOldest(window, s.opts.Resume[ch.ID].Mark)
 		msgs, err := s.client.History(ctx, ch.ID, oldest, s.opts.MaxMessages)
-		if errors.Is(err, slack.ErrRateLimited) {
-			// The history retry budget is large, so reaching here means this
-			// channel stayed throttled for many minutes. Skip it and keep going
-			// rather than abandoning every later channel, and record it so a
-			// re-run can finish it. Only when many channels in a row throttle is
-			// the whole workspace hard limited, and then stopping and keeping
-			// what was read beats spinning.
-			unfinished = append(unfinished, ch.Name)
-			consecThrottle++
-			fmt.Fprintf(s.opts.Log, "slack: still rate limited at #%s after retries; skipping it\n", ch.Name)
-			if consecThrottle >= maxConsecThrottle {
-				fmt.Fprintf(s.opts.Log,
-					"slack: %d channels in a row are rate limited; stopping with %d read and %d left "+
-						"to finish on a re-run\n", consecThrottle, read, len(unfinished))
-				break
-			}
-			continue
+		if err != nil && ctx.Err() != nil {
+			return nil, fmt.Errorf("slack history for %s: %w", ch.Name, err)
 		}
-		consecThrottle = 0
-		if errors.Is(err, slack.ErrAPI) {
+		if err != nil && errors.Is(err, slack.ErrAPI) && !errors.Is(err, slack.ErrRateLimited) {
 			// Any per-channel API error, such as not_in_channel on a public
 			// channel the bot was never invited to, is skipped so one
 			// unreadable channel does not cost the whole run.
+			consecFailed = 0
 			skipped++
 			if strings.Contains(err.Error(), "not_in_channel") {
 				notInChannel++
@@ -234,8 +241,34 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("slack history for %s: %w", ch.Name, err)
+			// The retry budget is large, so reaching here means this channel
+			// stayed throttled or unreachable for many minutes. Skip it and keep
+			// going rather than abandoning every later channel or throwing away
+			// what was already read. Its mark does not move, so the next run
+			// reads it from where it really stopped. Only when many channels in
+			// a row fail is the whole workspace out of reach, and then stopping
+			// and keeping what was read beats spinning.
+			s.skipped = append(s.skipped, ch.Name)
+			consecFailed++
+			lastFailure = err
+			if errors.Is(err, slack.ErrRateLimited) {
+				fmt.Fprintf(s.opts.Log, "slack: still rate limited at #%s after retries; skipping it\n", ch.Name)
+			} else {
+				fmt.Fprintf(s.opts.Log, "slack: could not read #%s, skipping it: %v\n", ch.Name, err)
+			}
+			if consecFailed >= maxConsecFailed {
+				for _, rest := range channels[i+1:] {
+					s.skipped = append(s.skipped, rest.Name)
+				}
+				fmt.Fprintf(s.opts.Log,
+					"slack: %d channels in a row could not be read; stopping with %d read and %d left\n",
+					consecFailed, read, len(s.skipped))
+				break
+			}
+			continue
 		}
+		consecFailed = 0
+		s.positions[ch.ID] = Position{Mark: slackNewest(msgs, oldest)}
 		if len(msgs) >= s.opts.MaxMessages {
 			fmt.Fprintf(s.opts.Log,
 				"slack: #%s hit the %d message cap; older messages skipped\n", ch.Name, s.opts.MaxMessages)
@@ -286,10 +319,13 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				"slack: skipped %d channels the bot is not in; invite it to the ones that matter\n", skipped)
 		}
 	}
-	if len(unfinished) > 0 {
+	if read == 0 && len(s.skipped) > 0 {
+		return nil, fmt.Errorf("slack: no channel could be read: %w", lastFailure)
+	}
+	if len(s.skipped) > 0 {
 		fmt.Fprintf(s.opts.Log,
-			"slack: %d channels were left unfinished by rate limiting; re-run to index them\n",
-			len(unfinished))
+			"slack: %d channels could not be read this time; the next refresh picks each one up "+
+				"where it stopped\n", len(s.skipped))
 	}
 	return records, nil
 }
@@ -463,15 +499,64 @@ func slackUserRef(userID string, byID map[string]slack.User) string {
 	return "slack:" + userID
 }
 
-// slackOldestSince returns the Slack oldest timestamp for a read: the history
-// window by default, or the watermark when it is more recent, so an incremental
-// re-index reads only messages posted after the last run.
-func slackOldestSince(days int, since time.Time) string {
-	start := time.Now().AddDate(0, 0, -days)
-	if since.After(start) {
-		start = since
+// slackOldest returns the oldest bound for one channel's read: the start of the
+// history window, or the channel's mark when it is more recent, so an
+// incremental read asks only for messages posted after the last one it read.
+// Slack treats the bound as exclusive, so the message at the mark is not read
+// again. A mark older than the window never widens the read past it.
+func slackOldest(window, mark string) string {
+	if slackTSAfter(mark, window) {
+		return mark
 	}
-	return slackTS(start)
+	return window
+}
+
+// slackNewest returns the timestamp of the newest message in msgs, or oldest
+// when there is none, so a channel with nothing new keeps its place.
+func slackNewest(msgs []slack.Message, oldest string) string {
+	newest := oldest
+	for _, m := range msgs {
+		if slackTSAfter(m.TS, newest) {
+			newest = m.TS
+		}
+	}
+	return newest
+}
+
+// slackTSAfter reports whether Slack timestamp a is later than b. A timestamp
+// that does not parse is never later, and anything that parses is later than
+// one that does not.
+func slackTSAfter(a, b string) bool {
+	as, af, ok := slackTSParts(a)
+	if !ok {
+		return false
+	}
+	bs, bf, ok := slackTSParts(b)
+	if !ok {
+		return true
+	}
+	return as > bs || (as == bs && af > bf)
+}
+
+// slackTSParts splits a Slack timestamp such as "1712345678.000100" into whole
+// seconds and microseconds. The two halves are compared as integers, since a
+// float cannot hold every microsecond at this magnitude and two messages a
+// microsecond apart would compare equal.
+func slackTSParts(ts string) (sec, micro int64, ok bool) {
+	whole, frac, _ := strings.Cut(ts, ".")
+	sec, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil || sec <= 0 {
+		return 0, 0, false
+	}
+	if frac == "" {
+		return sec, 0, true
+	}
+	frac = (frac + "000000")[:6]
+	micro, err = strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return sec, micro, true
 }
 
 // slackTS formats a time as a Slack message timestamp, Unix seconds with a

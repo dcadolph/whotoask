@@ -16,8 +16,9 @@ import (
 	"github.com/dcadolph/whotoask/internal/vault"
 )
 
-// Version is the current state-file schema version.
-const Version = 1
+// Version is the current state-file schema version. Version 2 keeps a position
+// for each unit a source reads, where version 1 kept one time for the source.
+const Version = 2
 
 // State is the set of incremental watermarks, keyed by source and scope.
 type State struct {
@@ -51,6 +52,25 @@ type Watermark struct {
 	// newest commit read is exact, and a history that was rewritten simply
 	// fails to contain it, which is the signal to read the whole window again.
 	Mark string `json:"mark,omitempty"`
+	// Units holds where reading stopped in each unit the source reads on its
+	// own, such as a Slack channel or a GitHub repository. A unit that a run
+	// could not read keeps its entry, so the next run resumes it from where it
+	// really stopped, and a unit with no entry is read from the start.
+	Units map[string]Unit `json:"units,omitempty"`
+	// FullAt is when the source was last read in full, so a run can tell when
+	// the next full read is due.
+	FullAt time.Time `json:"full_at,omitzero"`
+}
+
+// Unit is where reading stopped in one unit of a source.
+type Unit struct {
+	// Cursor is the time the next read of the unit asks from.
+	Cursor time.Time `json:"cursor,omitzero"`
+	// Mark is an exact position only the source understands.
+	Mark string `json:"mark,omitempty"`
+	// Seen maps each item read at or after the next read's lower bound to the
+	// update stamp it carried, so the next read does not count it again.
+	Seen map[string]string `json:"seen,omitempty"`
 }
 
 // Key composes the map key for a source and scope. The separator is a byte that
@@ -107,10 +127,26 @@ func Load(path string, codec vault.Codec) (*State, error) {
 	if s.Watermarks == nil {
 		s.Watermarks = map[string]Watermark{}
 	}
-	if s.Version == 0 {
-		s.Version = Version
-	}
+	s.upgrade()
 	return &s, nil
+}
+
+// upgrade brings a state read from an older file to the current version. A
+// version 1 watermark held one time for a whole source, taken from the newest
+// record, and that time could step over a unit the run had skipped. It cannot
+// be trusted as a place to resume, so it is dropped and the next run of that
+// source reads in full. A watermark that carries a Mark resumes from an exact
+// position and is kept.
+func (s *State) upgrade() {
+	if s.Version >= Version {
+		return
+	}
+	for key, wm := range s.Watermarks {
+		if wm.Mark == "" {
+			delete(s.Watermarks, key)
+		}
+	}
+	s.Version = Version
 }
 
 // Save writes state to path readable only by the owner, sealed under codec when

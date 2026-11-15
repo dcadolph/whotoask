@@ -392,3 +392,13 @@ func (s *SlackExport) enrichFromExport(
 		}
 	}
 }
+
+// slackOldestSince returns the oldest timestamp an export read keeps: the
+// history window by default, or since when it is more recent.
+func slackOldestSince(days int, since time.Time) string {
+	start := time.Now().AddDate(0, 0, -days)
+	if since.After(start) {
+		start = since
+	}
+	return slackTS(start)
+}

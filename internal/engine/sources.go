@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/dcadolph/whotoask/internal/connector"
 	"github.com/dcadolph/whotoask/internal/graph"
@@ -34,7 +33,7 @@ const (
 )
 
 // SourceOptions holds everything a source constructor reads. The per-source
-// connector options are filled by the caller from its flags; Log and Since are
+// connector options are filled by the caller from its flags; Log and Resume are
 // copied into whichever of them the source takes.
 type SourceOptions struct {
 	// File is the input path for a file source, or the JSON file ("-" or empty
@@ -44,8 +43,9 @@ type SourceOptions struct {
 	Stdin io.Reader
 	// Log receives progress and warnings from the connector.
 	Log io.Writer
-	// Since limits an incremental read; the zero value reads in full.
-	Since time.Time
+	// Resume holds where an earlier read stopped in each unit, for an
+	// incremental read. Nil reads in full.
+	Resume map[string]connector.Position
 	// Creds holds the resolved value of each variable the source names in
 	// SourceSpec.Creds, keyed by variable name. A missing key reads as empty.
 	Creds map[string]string
@@ -211,7 +211,7 @@ func newSlack(o SourceOptions) (connector.Source, error) {
 		return nil, err
 	}
 	so := o.Slack
-	so.Since, so.Log = o.Since, o.Log
+	so.Resume, so.Log = o.Resume, o.Log
 	return connector.NewSlack(token, so), nil
 }
 
@@ -227,7 +227,7 @@ func newSlackExport(o SourceOptions) (connector.Source, error) {
 		return nil, err
 	}
 	so := o.SlackExport
-	so.Since, so.Log = o.Since, o.Log
+	so.Log = o.Log
 	return connector.NewSlackExport(o.File, so), nil
 }
 
@@ -251,7 +251,7 @@ func newGitHub(o SourceOptions) (connector.Source, error) {
 		return nil, fmt.Errorf("%w: --repo or --github-org required for github", ErrBadArgs)
 	}
 	gho := o.GitHub
-	gho.Since, gho.Log = o.Since, o.Log
+	gho.Resume, gho.Log = o.Resume, o.Log
 	return connector.NewGitHub(token, gho), nil
 }
 
@@ -272,7 +272,7 @@ func newJira(o SourceOptions) (connector.Source, error) {
 			ErrBadArgs, JiraURLEnv, JiraEmailEnv, JiraTokenEnv)
 	}
 	jo := o.Jira
-	jo.Since, jo.Log = o.Since, o.Log
+	jo.Resume, jo.Log = o.Resume, o.Log
 	return connector.NewJira(site, email, token, jo), nil
 }
 
@@ -296,7 +296,7 @@ func newConfluence(o SourceOptions) (connector.Source, error) {
 				"or pass --confluence-server for a self-hosted site)", ErrBadArgs)
 	}
 	co := o.Confluence
-	co.Since, co.Log = o.Since, o.Log
+	co.Resume, co.Log = o.Resume, o.Log
 	return connector.NewConfluence(site, email, token, co), nil
 }
 
