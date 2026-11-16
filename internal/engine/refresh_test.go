@@ -34,7 +34,7 @@ func TestInvocationsRoundTrip(t *testing.T) {
 	in := Invocations{
 		"github": {"org:acme": {
 			Flags: []string{"--github-org", "acme"}, RanAt: at, AttemptedAt: at.Add(time.Hour), Error: "boom",
-			Found: &Outcome{People: 4, Channels: 2},
+			Found: &Outcome{People: 4, Read: 11, Skipped: 1},
 		}},
 		"slack": {"all": {Flags: []string{"--include-private=true"}}},
 	}
@@ -395,7 +395,7 @@ func TestRefreshRecordsAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRun := Run{Flags: jiraFlags, RanAt: clock, AttemptedAt: clock, Found: &Outcome{People: 1}}
+	wantRun := Run{Flags: jiraFlags, RanAt: clock, AttemptedAt: clock, Found: &Outcome{People: 1, Read: 1}}
 	if diff := cmp.Diff(wantRun, got["jira"]["project:KAFKA"]); diff != "" {
 		t.Errorf("after a success (-want +got):\n%s", diff)
 	}

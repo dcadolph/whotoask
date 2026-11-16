@@ -172,6 +172,9 @@ func TestGitHubSkippedRepoKeepsItsPlace(t *testing.T) {
 	if _, moved := positions["o/bad"]; moved {
 		t.Errorf("positions = %v, want no entry for the skipped repository", positions)
 	}
+	if len(positions) != 1 {
+		t.Errorf("positions = %v, want the one repository that was read", positions)
+	}
 	want := time.Date(2026, 6, 25, 10, 0, 0, 0, time.UTC)
 	if got := positions["o/good"]; !got.Cursor.Equal(want) || got.Seen["pr:4"] == "" {
 		t.Errorf("o/good position = %+v, want cursor %v with pr:4 seen", got, want)

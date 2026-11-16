@@ -93,9 +93,23 @@ type Outcome struct {
 	People int `json:"people"`
 	// Channels is how many distinct channels the source holds after the run.
 	Channels int `json:"channels"`
+	// Read is how many units of the source the run read to the end: channels for
+	// Slack, repositories for GitHub, one for a source read as a single query.
+	Read int `json:"read,omitempty"`
 	// Skipped is how many units of the source, such as channels or repositories,
 	// the run could not read. Each keeps its place and is read by a later run.
 	Skipped int `json:"skipped,omitempty"`
+}
+
+// unitCounts returns how many units src read to the end and how many it could
+// not read in its most recent Fetch, both zero for a source that does not
+// report positions.
+func unitCounts(src connector.Source) (read, skipped int) {
+	res, ok := src.(connector.Resumable)
+	if !ok {
+		return 0, 0
+	}
+	return len(res.Positions()), len(res.Skipped())
 }
 
 // heldRecords returns what ix holds after a fold for source and for every source
@@ -244,9 +258,7 @@ func (x *Indexer) Index(ctx context.Context, req IndexRequest) error {
 	if err != nil {
 		return err
 	}
-	if res, ok := src.(connector.Resumable); ok {
-		out.Skipped = len(res.Skipped())
-	}
+	out.Read, out.Skipped = unitCounts(src)
 	// A connector may hand back what it read before a cancel with no error. Folding
 	// that would store a partial read as complete.
 	if err := ctx.Err(); err != nil {

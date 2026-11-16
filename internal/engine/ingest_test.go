@@ -543,3 +543,49 @@ func TestHeldRecords(t *testing.T) {
 		t.Errorf("org-csv holds %d people, want 1", people)
 	}
 }
+
+// testSource is a source that reports no positions, for tests of how the engine
+// counts units of a source that is not resumable.
+type testSource struct{}
+
+// Fetch returns no records.
+func (testSource) Fetch(context.Context) ([]connector.Record, error) { return nil, nil }
+
+// TestUnitCounts verifies a run counts the units it read from the positions it
+// saved and the units it could not read from the skipped list, so a card can
+// show read of read plus skipped.
+func TestUnitCounts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Src         connector.Source
+		WantRead    int
+		WantSkipped int
+	}{{ // Test 0: Two channels read and one skipped.
+		Src: &testResumable{
+			positions: map[string]connector.Position{"C1": {Mark: "1"}, "C3": {Mark: "3"}},
+			skipped:   []string{"c2"},
+		},
+		WantRead: 2, WantSkipped: 1,
+	}, { // Test 1: Every unit read.
+		Src:      &testResumable{positions: map[string]connector.Position{"o/a": {}, "o/b": {}, "o/c": {}}},
+		WantRead: 3, WantSkipped: 0,
+	}, { // Test 2: A source read as one query holds one position.
+		Src:      &testResumable{positions: map[string]connector.Position{"": {}}},
+		WantRead: 1, WantSkipped: 0,
+	}, { // Test 3: A resumable source that read nothing.
+		Src:      &testResumable{},
+		WantRead: 0, WantSkipped: 0,
+	}, { // Test 4: A source that keeps no positions counts nothing.
+		Src:      testSource{},
+		WantRead: 0, WantSkipped: 0,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			read, skipped := unitCounts(test.Src)
+			if diff := cmp.Diff([2]int{test.WantRead, test.WantSkipped}, [2]int{read, skipped}); diff != "" {
+				t.Errorf("read, skipped mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
