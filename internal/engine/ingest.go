@@ -94,8 +94,10 @@ type Outcome struct {
 	// Channels is how many distinct channels the source holds after the run.
 	Channels int `json:"channels"`
 	// Read is how many units of the source the run read to the end: channels for
-	// Slack, repositories for GitHub, one for a source read as a single query.
-	Read int `json:"read,omitempty"`
+	// Slack, repositories for GitHub, one for a source read as a single query,
+	// zero for a source that keeps no positions. It is always written, so a run
+	// that read nothing is told apart from a record made before runs counted it.
+	Read int `json:"read"`
 	// Skipped is how many units of the source, such as channels or repositories,
 	// the run could not read. Each keeps its place and is read by a later run.
 	Skipped int `json:"skipped,omitempty"`

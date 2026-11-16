@@ -562,7 +562,7 @@ func TestHandleIndexAndRefresh(t *testing.T) {
 	if !strings.Contains(got, `"people":2`) {
 		t.Errorf("status %s, want two people", got)
 	}
-	if !strings.Contains(got, `"found":{"repos":1,"people":2,"channels":0}`) {
+	if !strings.Contains(got, `"found":{"repos":1,"people":2,"channels":0,"read":0}`) {
 		t.Errorf("status %s, want the git scope to have read 1 repository and found 2 people", got)
 	}
 	inv, err := h.store.LoadInvocations()
@@ -605,7 +605,7 @@ func TestHandleIndexAndRefresh(t *testing.T) {
 	if !strings.Contains(st, `"built_at":"`+later.Format(time.RFC3339)+`"`) {
 		t.Errorf("status after refresh %s, want built_at %s from the reloaded index", st, later.Format(time.RFC3339))
 	}
-	if !strings.Contains(st, `"found":{"repos":1,"people":2,"channels":0}`) {
+	if !strings.Contains(st, `"found":{"repos":1,"people":2,"channels":0,"read":0}`) {
 		t.Errorf("status after refresh %s, want the git scope to keep 1 repository and 2 people", st)
 	}
 }
