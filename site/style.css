@@ -1,21 +1,26 @@
 :root {
-  --band: #2A1C13;
-  --band-fg: #F6EDE0;
-  --band-muted: #C9B49C;
-  --band-code: #1E140D;
-  --band-line: #4A3524;
+  --espresso: #24150C;
+  --band: #3A2316;
+  --saddle: #5C331C;
+  --cognac: #7A3F1D;
+  --band-fg: #F6ECDC;
+  --band-muted: #D9C3A8;
+  --band-code: #24150C;
+  --band-line: #6A4229;
   --white: #FFFFFF;
-  --tawny: #C98A3D;
-  --tawny-light: #DDA35A;
-  --bg: #FBF6EE;
-  --fg: #2A1C13;
-  --muted: #6E5A4A;
-  --accent: #8B4A1C;
-  --code-bg: #F1E8DA;
-  --card: #FFFDF9;
-  --line: #E4D8C6;
-  --warm: color-mix(in srgb, var(--tawny) 7%, var(--bg));
-  --warm2: color-mix(in srgb, var(--tawny) 13%, var(--bg));
+  --tawny: #E8742A;
+  --tawny-light: #F08A3C;
+  --peach: #FFD2A6;
+  --bg: #FFFDF9;
+  --fg: #2B1A10;
+  --muted: #6F5A49;
+  --accent: #B04E18;
+  --code-bg: #F6ECDC;
+  --card: #FFFFFF;
+  --line: #EBDDC8;
+  --cream: #F6ECDC;
+  --cream2: #FBF5EB;
+  --shadow: 0 1px 2px rgb(58 35 22 / 6%), 0 8px 24px -12px rgb(58 35 22 / 18%);
   --goldline: color-mix(in srgb, var(--tawny) 30%, transparent);
   --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -25,13 +30,18 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17110C;
+    --espresso: #120C08;
+    --band: #2E1C12;
+    --bg: #17100B;
     --fg: #F3E9DC;
     --muted: #B3A08C;
-    --accent: #D9A260;
-    --code-bg: #241A12;
-    --card: #1E1610;
-    --line: #33261B;
+    --accent: #F08A3C;
+    --code-bg: #2A1D14;
+    --card: #1F150E;
+    --line: #3A2A1D;
+    --cream: #22170F;
+    --cream2: #1B120C;
+    --shadow: none;
   }
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,7 +65,8 @@ p b { color: var(--fg); font-weight: 600; }
 .small { font: 700 13px/1.4 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
 
 /* Top bar and hero share the dark band, so the white owl sits on its own color. */
-.dark { background: var(--band); color: var(--band-fg); }
+.dark { background: linear-gradient(160deg, var(--band) 0%, var(--band) 45%, var(--saddle) 100%); color: var(--band-fg);
+  border-bottom: 3px solid var(--tawny); }
 .top { padding: 20px 0; }
 .top .w { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--white); text-decoration: none;
@@ -67,7 +78,7 @@ p b { color: var(--fg); font-weight: 600; }
 .top nav a[aria-current="page"] { color: var(--band-fg); }
 
 .hero { padding: clamp(24px, 4vw, 48px) 0 clamp(64px, 9vw, 112px);
-  background: radial-gradient(ellipse at 18% 30%, color-mix(in srgb, var(--tawny) 16%, transparent), transparent 60%); }
+  background: radial-gradient(ellipse at 18% 30%, color-mix(in srgb, var(--tawny) 22%, transparent), transparent 60%); }
 .hero .w { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(32px, 5vw, 64px); align-items: center; }
 .hero .owl { width: clamp(120px, 16vw, 190px); }
 .hero .small { color: var(--tawny); }
@@ -78,7 +89,7 @@ p b { color: var(--fg); font-weight: 600; }
   border-radius: 999px; font: 700 16px var(--sans); text-decoration: none; border: 1.5px solid var(--tawny);
   transition: transform 0.15s, background 0.15s; }
 .btn:hover { transform: translateY(-2px); }
-.btn.primary { background: var(--tawny); color: var(--band); }
+.btn.primary { background: var(--tawny); color: var(--espresso); }
 .btn.primary:hover { background: var(--tawny-light); border-color: var(--tawny-light); }
 .btn.ghost { color: var(--band-fg); border-color: var(--band-line); }
 .btn.ghost:hover { border-color: var(--tawny); }
@@ -90,10 +101,15 @@ p b { color: var(--fg); font-weight: 600; }
 
 /* Sections take turns on the background so each reads as its own room. */
 .band { padding: clamp(64px, 9vw, 112px) 0; }
-.warm { background: linear-gradient(180deg, var(--warm2), var(--warm) 60%); border-block: 1px solid var(--goldline); }
+.warm { background: linear-gradient(180deg, var(--cream), var(--cream2)); border-block: 1px solid var(--line); }
+.saddle { background: linear-gradient(135deg, var(--cognac), var(--saddle)); color: var(--band-fg); }
+.saddle h2 { color: var(--white); }
+.saddle p { color: var(--band-fg); }
+.saddle .small, .saddle a { color: var(--peach); }
 .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gut); margin-top: 40px; }
 .cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 28px; }
+.card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 28px;
+  box-shadow: var(--shadow); }
 .card p { font-size: 17px; }
 .card pre { margin-top: 16px; }
 .num { display: inline-grid; place-items: center; width: 34px; height: 34px; margin-bottom: 14px; border-radius: 50%;
@@ -124,11 +140,13 @@ details pre { margin: 14px 0; }
 .doc ul { padding-left: 22px; color: var(--muted); }
 .doc li { margin-bottom: 10px; }
 
-footer { border-top: 1px solid var(--line); padding: 40px 0 56px; font-size: 15px; color: var(--muted); }
+footer { background: var(--espresso); border-top: 3px solid var(--tawny); padding: 40px 0 56px; font-size: 15px;
+  color: var(--band-muted); }
+footer p { color: var(--band-muted); }
 footer .w { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
 footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; }
-footer a { color: var(--muted); text-decoration: none; }
-footer a:hover { color: var(--accent); }
+footer a { color: var(--band-fg); text-decoration: none; }
+footer a:hover { color: var(--tawny-light); }
 
 @media (max-width: 820px) {
   .cards, .cards.three { grid-template-columns: minmax(0, 1fr); }
@@ -146,6 +164,7 @@ footer a:hover { color: var(--accent); }
   .dark, .hero { background: none; color: #000; }
   .hero h1, .hero .lede, .brand { color: #000; }
   .top nav, .actions, .owl, .brand img { display: none; }
-  .warm { background: none; }
+  .warm, .saddle, footer { background: none; border: 0; }
+  .saddle h2, .saddle p, .saddle .small, .saddle a, footer, footer p, footer a { color: #000; }
   details > :not(summary) { display: block; }
 }
