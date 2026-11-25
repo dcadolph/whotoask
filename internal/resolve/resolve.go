@@ -310,7 +310,7 @@ func extractJSON(raw string) string {
 
 // modelFailedNote is appended to the summary of an answer the model failed to
 // rank, so the asker knows the order came from retrieval alone.
-const modelFailedNote = "The model did not answer, so these results are ranked without it."
+const modelFailedNote = "The model did not answer, so these results are in keyword order."
 
 // Resolve retrieves candidates, asks the model to rank them, and returns the
 // grounded result with a locally written summary. If the model reply cannot be

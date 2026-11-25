@@ -1,24 +1,22 @@
 
-Who knows about "billing"
-Two people and one channel know about billing.
+Who to ask about "billing"
+Talk to Kim Doe (Staff Engineer); ask in #payments.
 
   PEOPLE
 
-   1  Kim Doe  Staff Engineer, Payments
-      ▰▰▰▰▰▰▰▰▰▱  92%   commits to billing · answers in #payments
+  Kim Doe  Staff Engineer, Payments
+    commits to billing · answers in #payments
 
-   2  Lee Roe  Payments
-      ▰▰▰▰▱▱▱▱▱▱  40%   mentioned in docs
+  Lee Roe  Payments
+    mentioned in docs
 
-   3  Sam Poe  Manager
-      ▱▱▱▱▱▱▱▱▱▱    ~   
+  Sam Poe  Manager
 
   CHANNELS
 
-   1  #payments
-      ▰▰▰▰▰▰▰▱▱▱  70%   active on billing
-      → https://chat.example.com/payments
+  #payments
+    active on billing
+    → https://chat.example.com/payments
 
-   2  #billing-alerts
-      ▰▰▱▱▱▱▱▱▱▱  20%   
+  #billing-alerts
 

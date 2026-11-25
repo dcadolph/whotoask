@@ -2,6 +2,11 @@
 // /api/directory, routed by location.hash. Result text is set with
 // textContent so indexed data cannot inject markup.
 
+// NOT_FOR is the use the findings must never be put to. It appears wherever
+// the page describes a person's record, so it travels with the finding.
+const NOT_FOR = "Its findings must not be used for performance reviews, layoffs, "
+  + "or any other employment decision.";
+
 const form = document.getElementById("ask-form");
 const qInput = document.getElementById("q");
 const modeSeg = document.getElementById("mode-seg");
@@ -172,8 +177,8 @@ async function showExamples() {
     // Fall through to the generic prompts below.
   }
   const queries = subjects.length
-    ? subjects.map((s, i) => (i === 0 ? "who do I talk to about " + s : "who knows " + s))
-    : ["who do I talk to about billing", "who knows kubernetes", "vacation policy"];
+    ? subjects.map((s, i) => (i === 0 ? "who do I talk to about " + s : "who to ask about " + s))
+    : ["who do I talk to about billing", "who to ask about kubernetes", "vacation policy"];
   examplesEl.replaceChildren();
   for (const example of queries) {
     const b = el("button", "example", example);
@@ -254,12 +259,12 @@ function render(data) {
     summaryEl.hidden = false;
   }
   // The departed close the people list, marked, rather than open a section of
-  // their own, so the ranking reads as one list with them at the bottom.
+  // their own, so the order reads as one list with them at the bottom.
   const people = (data.people || []).concat(data.departed || []);
   const channels = data.channels || [];
 
-  people.forEach((p, i) => peopleEl.appendChild(personCard(p, data.query, i)));
-  channels.forEach((c, i) => channelsEl.appendChild(channelCard(c, data.query, i)));
+  people.forEach((p) => peopleEl.appendChild(personCard(p, data.query)));
+  channels.forEach((c) => channelsEl.appendChild(channelCard(c, data.query)));
   peopleSection.hidden = people.length === 0;
   channelsSection.hidden = channels.length === 0;
 
@@ -276,12 +281,6 @@ function chips(parent, items) {
   const wrap = el("div", "chips");
   for (const item of items) wrap.appendChild(el("span", "chip", item));
   parent.appendChild(wrap);
-}
-
-function strengthBadge(c) {
-  if (!c) return null;
-  const label = c >= 0.75 ? "strong" : c >= 0.45 ? "moderate" : "weak";
-  return el("span", "conf conf-" + label, label);
 }
 
 function voteButtons(query, target) {
@@ -311,11 +310,6 @@ function voteButtons(query, target) {
   return wrap;
 }
 
-// rankBadge renders the zero-padded position marker in a result card corner.
-function rankBadge(i) {
-  return el("span", "rank", String(i + 1).padStart(2, "0"));
-}
-
 // initials reduces a name to one or two letters for an avatar.
 function initials(name) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -341,9 +335,12 @@ function personAvatar(name) {
   return av;
 }
 
-function personCard(p, query, i) {
+// personCard draws one person in an answer. It carries no position number and
+// no strength mark: the list is already best match first, and the strength
+// figure comes from a different number than the order, so showing it beside a
+// name would let a row read as stronger than the row above it.
+function personCard(p, query) {
   const card = el("div", "card person-card");
-  card.appendChild(rankBadge(i));
 
   const head = el("div", "person-head");
   head.appendChild(personAvatar(p.name || p.email || ""));
@@ -351,11 +348,9 @@ function personCard(p, query, i) {
   const name = el("div", "name");
   const toggle = el("button", "name-toggle", p.name || p.email || "unknown");
   toggle.type = "button";
-  toggle.title = "Show everything whotoask knows";
+  toggle.title = "Show this person's record";
   toggle.addEventListener("click", () => openProfile(p.id || p.email));
   name.appendChild(toggle);
-  const badge = strengthBadge(p.strength);
-  if (badge) name.appendChild(badge);
   who.appendChild(name);
   const sub = [p.title, p.team, p.deactivated ? "deactivated" : ""].filter(Boolean).join(" · ");
   if (sub) who.appendChild(el("div", "sub", sub));
@@ -450,7 +445,7 @@ function personLink(name, id) {
   if (!id) return document.createTextNode(label);
   const button = el("button", "person-link", label);
   button.type = "button";
-  button.title = "Show everything whotoask knows about " + label;
+  button.title = "Show the record for " + label;
   button.addEventListener("click", (ev) => {
     ev.stopPropagation();
     openProfile(id);
@@ -544,9 +539,10 @@ function showProfile(p) {
   if (p.topics && p.topics.length) {
     const v = el("span", "detail-value detail-chips");
     for (const topic of p.topics) v.appendChild(el("span", "chip", topic));
-    row("Knows about", v);
+    row("On record for", v);
   }
   modal.appendChild(rows);
+  modal.appendChild(el("p", "not-for", NOT_FOR));
   backdrop.appendChild(modal);
   openModal(backdrop, "Profile: " + (p.name || p.email || "person"));
   setParam("person", p.id);
@@ -572,7 +568,7 @@ function showFeedbackHow() {
   const box = el("div", "modal keys-modal");
   box.appendChild(el("h2", null, "Tell us how it went"));
   const p1 = el("p", "fb-how-p",
-    "Your votes on answers stay on this machine and tune your own ranking. " +
+    "Your votes on answers stay on this machine and move the order of your own answers. " +
     "If you want to send us what they amount to, one command writes a file:");
   const pre = el("pre", "story-install", "whotoask feedback bundle");
   pre.appendChild(copyButton("whotoask feedback bundle"));
@@ -666,13 +662,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-function channelCard(c, query, i) {
+function channelCard(c, query) {
   const card = el("div", "card");
-  card.appendChild(rankBadge(i));
   const name = el("div", "name", "#" + c.name);
   name.appendChild(copyButton("#" + c.name));
-  const badge = strengthBadge(c.strength);
-  if (badge) name.appendChild(badge);
   card.appendChild(name);
   if (c.topic) card.appendChild(el("div", "sub", c.topic));
 
@@ -895,13 +888,13 @@ const DIR_COLUMNS = {
     ["Title", (r) => r.title],
     ["Team", (r) => r.team],
     ["Org", (r) => r.org],
-    ["Knows", (r) => (r.topics || []).join("; ")],
+    ["On record for", (r) => (r.topics || []).join("; ")],
   ],
   topics: [
     ["Subject", (r) => r.name],
     ["People", (r) => r.people],
     ["Still active", (r) => r.active],
-    ["Leads", (r) => r.lead],
+    ["Lead on record", (r) => r.lead],
   ],
   teams: [
     ["Team", (r) => r.name],
@@ -982,8 +975,8 @@ function directoryRow(view, r) {
 
 // dirPersonRow is one person in the roster. A directory is read by scanning
 // hundreds of rows, not by studying one, so this is a dense row rather than a
-// card: face, who they are, what they know, and a copy that stays out of the
-// way until the row is under the pointer.
+// card: face, who they are, what they are on record for, and a copy that stays
+// out of the way until the row is under the pointer.
 function dirPersonRow(p) {
   const card = el("div", "card person-card dir-row");
   const head = el("div", "person-head");
@@ -993,7 +986,7 @@ function dirPersonRow(p) {
   const name = el("div", "name");
   const toggle = el("button", "name-toggle", p.name || p.id);
   toggle.type = "button";
-  toggle.title = "Show everything whotoask knows";
+  toggle.title = "Show this person's record";
   toggle.addEventListener("click", () => openProfile(p.id));
   name.appendChild(toggle);
   who.appendChild(name);
@@ -1003,13 +996,13 @@ function dirPersonRow(p) {
 
   const contact = el("div", "person-contact");
   if (p.email) contact.appendChild(el("span", "person-mail", p.email));
-  // Everything whotoask knows about them, in one paste: for a ticket, a handover
+  // Everything on record about them, in one paste: for a ticket, a handover
   // note, or the message you are about to write asking for help.
   contact.appendChild(copyButton(() => [
     p.name || p.id,
     [p.title, p.team, p.org].filter(Boolean).join(" · "),
     p.email || "",
-    (p.topics || []).length ? "Knows: " + (p.topics || []).join(", ") : "",
+    (p.topics || []).length ? "On record for: " + (p.topics || []).join(", ") : "",
   ].filter(Boolean).join("\n"), "copy"));
   head.appendChild(contact);
   card.appendChild(head);
@@ -1065,15 +1058,15 @@ function dirTopicRow(t) {
   const card = el("div", "card card-row dir-clickable");
   card.setAttribute("role", "button");
   card.tabIndex = 0;
-  card.title = "Ask who knows about this";
+  card.title = "Ask about this subject";
   card.appendChild(el("span", "name", t.name));
   // Who to ask, without a second click. A count alone makes every row look the
   // same and answers nothing.
   if (t.lead) {
     // Say what the name is. A person's name floating mid-row is read as a
-    // label for the row rather than as the answer to "who leads this".
+    // label for the row rather than as the answer to "who is the lead".
     const lead = el("span", "sub row-lead");
-    lead.appendChild(el("span", "row-lead-label", "leads"));
+    lead.appendChild(el("span", "row-lead-label", "lead on record"));
     lead.appendChild(document.createTextNode(t.lead));
     card.appendChild(lead);
   }
@@ -1466,14 +1459,14 @@ async function renderExposure() {
           (r.experts || []).map((e) => e.name + " " + Math.round((e.share || 0) * 100) + "%").join("; ")]);
       }
       for (const s of (data.spans || [])) {
-        out.push(["One-person connection", (s.topics || []).join(" + "), "", s.experts, s.person]);
+        out.push(["One-person connection", (s.topics || []).join(" + "), "", s.on_record, s.person]);
       }
       for (const r of (data.regions || [])) {
         out.push(["Joined work", (r.topics || []).join("; "), "", (r.topics || []).length, r.lead]);
       }
       for (const d of drift) {
         out.push(["Ownership drift", d.topic, d.why || "", "", "declared " +
-          (d.declared || []).join("; ") + "; actually " + (d.actual || "")]);
+          (d.declared || []).join("; ") + "; on record " + (d.actual || "")]);
       }
       downloadCSV("whotoask-findings.csv",
         ["Finding", "Subject", "Detail", "Count", "People"], out);
@@ -1497,7 +1490,8 @@ async function renderExposure() {
   if (risk.length) {
     for (const r of risk) expRisk.appendChild(riskCard(r));
   } else {
-    expRisk.appendChild(el("p", "exp-empty", "No topics scored yet. Index a source with expertise signal first."));
+    expRisk.appendChild(el("p", "exp-empty",
+      "No subjects on record yet. Index a source that records who worked on what first."));
   }
   if (drift.length) {
     for (const d of drift) expDrift.appendChild(driftCard(d));
@@ -1556,44 +1550,51 @@ async function checkDeparture(who) {
   }
   const sole = imp.sole || [];
   const top = imp.top || [];
+  const name = imp.name || imp.person;
   const card = el("div", "exp-card " + (sole.length ? "exp-critical" : top.length ? "exp-elevated" : "exp-ok"));
   const head = el("div", "exp-card-head");
-  head.appendChild(el("span", "exp-topic", imp.name || imp.person));
-  head.appendChild(el("span", "exp-level", sole.length ? "sole owner" : top.length ? "top expert" : "covered"));
-  head.appendChild(el("span", "exp-bus", sole.length + " sole, " + top.length + " leading"));
+  head.appendChild(el("span", "exp-topic", "If " + name + " is out"));
+  if (!sole.length && !top.length) {
+    card.appendChild(head);
+    card.appendChild(el("p", "exp-also", name + " is not the lead on record for any subject."));
+    expDepResult.appendChild(card);
+    return;
+  }
+  head.appendChild(el("span", "exp-bus", subjects(sole.length) + " alone on record, "
+    + subjects(top.length) + " as lead"));
   // What leaves with somebody is the one finding here that gets written down
   // somewhere else: a handover note, a succession conversation, a backfill
   // request. It copies as prose rather than as a list of topic names, because
   // that is what the person reading it three weeks later needs.
   head.appendChild(copyButton(() => {
-    const name = imp.name || imp.person;
-    const lines = [];
+    const lines = ["If " + name + " is out"];
     if (sole.length) {
-      lines.push("If " + name + " leaves, nobody else has any expertise in "
-        + sole.length + " area" + (sole.length === 1 ? "" : "s") + ": " + sole.join(", ") + ".");
+      lines.push(name + " is the only person on record for " + subjects(sole.length)
+        + ": " + sole.join(", ") + ".");
     }
     if (top.length) {
-      lines.push(name + " is the strongest expert in " + top.join(", ")
-        + ", though others remain.");
+      lines.push(name + " is the lead on record for " + subjects(top.length) + ", and others are "
+        + "also on record for them: " + top.join(", ") + ".");
     }
-    if (!sole.length && !top.length) {
-      lines.push(name + " leads nothing on their own. Every area they work in has another expert.");
-    }
+    lines.push(NOT_FOR);
     return lines.join("\n\n");
   }, "copy handover"));
   card.appendChild(head);
   if (sole.length) {
-    card.appendChild(el("p", "exp-also", "Nobody else has any expertise in these:"));
+    card.appendChild(el("p", "exp-also", "Only person on record (" + sole.length + ")"));
     chips(card, sole);
   }
   if (top.length) {
-    card.appendChild(el("p", "exp-also", "Strongest expert, but others remain:"));
+    card.appendChild(el("p", "exp-also",
+      name + " is the lead on record, others also on record (" + top.length + ")"));
     chips(card, top);
   }
-  if (!sole.length && !top.length) {
-    card.appendChild(el("p", "exp-also", "Leads nothing on their own. Their areas all have another expert."));
-  }
   expDepResult.appendChild(card);
+}
+
+// subjects counts subjects in words, for the departure view.
+function subjects(n) {
+  return n + (n === 1 ? " subject" : " subjects");
 }
 
 // regionCard draws one joined body of work and who it rests on. The subjects
@@ -1609,9 +1610,10 @@ function placeCard(p) {
   const head = el("div", "exp-card-head");
   head.appendChild(el("span", "exp-topic", p.dir));
   head.appendChild(el("span", "exp-bus",
-    sole ? "rests on one person" : p.bus + " of " + p.people + " cover it"));
+    sole ? "one person on record" : p.bus + " of " + p.people + " cover it"));
   head.appendChild(copyButton(() =>
-    p.dir + " rests on " + holders.map((h) => h.name).join(", ")));
+    p.dir + " on record: " + holders.map((h) =>
+      h.name + " " + Math.round(100 * (h.share || 0)) + "% of the record").join(", ")));
   card.appendChild(head);
   const line = el("p", "exp-also");
   holders.forEach((h, i) => {
@@ -1633,16 +1635,17 @@ function regionCard(r) {
   head.appendChild(lead);
   head.appendChild(el("span", "exp-bus", topics.length + " joined subjects"));
   head.appendChild(copyButton(() =>
-    r.lead + " leads all " + topics.length + " of these, and they move together: " + topics.join(", ")));
+    r.lead + " is the lead on record for all " + topics.length
+      + " of these, and they move together: " + topics.join(", ")));
   card.appendChild(head);
   card.appendChild(el("p", "exp-also", topics.join(", ")));
   return card;
 }
 
 // spanCard draws one connection that rests on a single person. It names how
-// many people hold the two subjects between them, because that is what makes
-// the finding surprising: the subjects are not short of experts, the crossing
-// between them is.
+// many people are on record for the two subjects between them, because that is
+// what makes the finding surprising: the subjects are not short of people on
+// record, the crossing between them is.
 // crossingFigure draws one sole-person connection: each area healthy on its
 // own, the only line between them running through one person. Drawn from the
 // live finding, so the names are whatever the graph actually says.
@@ -1651,7 +1654,7 @@ function crossingFigure(sp) {
   const a = topics[0] || "";
   const b = topics[topics.length - 1] || "";
   const fig = el("figure", "crossfig");
-  const half = Math.max(1, Math.floor((sp.experts || 2) / 2));
+  const half = Math.max(1, Math.floor((sp.on_record || 2) / 2));
   const dots = (cx) => {
     let out = "";
     const spots = [[-26, -14], [12, -22], [-10, 18], [26, 10]];
@@ -1662,7 +1665,7 @@ function crossingFigure(sp) {
   };
   fig.innerHTML =
     '<svg viewBox="0 0 560 148" role="img" aria-label="' + escapeAttr(sp.person) +
-    ' is the only person connecting ' + escapeAttr(a) + ' and ' + escapeAttr(b) + '">' +
+    ' is the only person on record connecting ' + escapeAttr(a) + ' and ' + escapeAttr(b) + '">' +
     '<g class="cf-area"><ellipse cx="112" cy="72" rx="88" ry="50"/>' + dots(112) +
     '<text x="112" y="140">' + escapeHTML(shorten(a)) + '</text></g>' +
     '<g class="cf-area"><ellipse cx="448" cy="72" rx="88" ry="50"/>' + dots(448) +
@@ -1672,7 +1675,8 @@ function crossingFigure(sp) {
     '<text class="cf-lab" x="280" y="50">' + escapeHTML(sp.person) + '</text>' +
     "</svg>";
   const cap = el("figcaption", null,
-    (sp.experts || 0) + " people hold these areas. The crossing is " + sp.person + " alone.");
+    (sp.on_record || 0) + " people are on record for these areas. Only " + sp.person
+      + " is on record across both.");
   fig.appendChild(cap);
   return fig;
 }
@@ -1699,14 +1703,14 @@ function spanCard(sp) {
   only.appendChild(personLink(sp.person, sp.personId));
   head.appendChild(only);
   head.appendChild(copyButton(() =>
-    sp.person + " is the only person who has worked across " + topics.join(" and ")
-      + ", though " + (sp.experts || 0) + " people hold those subjects individually"));
+    sp.person + " is the only person on record across " + topics.join(" and ")
+      + ", though " + (sp.on_record || 0) + " people are on record for those subjects individually"));
   card.appendChild(head);
-  only.appendChild(el("span", "exp-dim", " · " + (sp.experts || 0) + " hold them"));
+  only.appendChild(el("span", "exp-dim", " · " + (sp.on_record || 0) + " on record"));
   return card;
 }
 
-// riskCard draws one topic's knowledge concentration with its experts.
+// riskCard draws how one subject's record is split among the people on it.
 function riskCard(r) {
   const card = el("div", "exp-card exp-" + (r.level || "ok"));
   const head = el("div", "exp-card-head");
@@ -1716,7 +1720,7 @@ function riskCard(r) {
   head.appendChild(copyButton(() => {
     const who = (r.experts || []).map((e) => e.name + " " + Math.round(e.share * 100) + "%");
     return r.topic + ": bus factor " + r.busFactor
-      + (who.length ? ", held by " + who.join(", ") : "");
+      + (who.length ? ", share of the record: " + who.join(", ") : "");
   }));
   card.appendChild(head);
   if (r.includes && r.includes.length) {
@@ -1725,7 +1729,9 @@ function riskCard(r) {
   addRelated(card, r.topic);
   for (const e of r.experts || []) {
     const row = el("div", "exp-expert");
-    row.appendChild(el("span", "exp-share", Math.round(e.share * 100) + "%"));
+    const share = el("span", "exp-share", Math.round(e.share * 100) + "%");
+    share.title = Math.round(e.share * 100) + "% of the record for " + r.topic;
+    row.appendChild(share);
     const bar = el("span", "exp-bar");
     const fill = el("span", "exp-bar-fill");
     fill.style.width = Math.round(e.share * 100) + "%";
@@ -1741,14 +1747,15 @@ function riskCard(r) {
   return card;
 }
 
-// driftCard draws one area where the declared owner is not the real expert.
+// driftCard draws one subject whose record names someone other than the
+// declared owner.
 function driftCard(d) {
   const card = el("div", "exp-card exp-drift-card");
   const head = el("div", "exp-card-head");
   head.appendChild(el("span", "exp-topic", d.topic));
   head.appendChild(copyButton(() =>
-    d.topic + " is declared to " + (d.declared || []).join(", ")
-      + " but the work is " + d.actual + "'s"));
+    "The record for " + d.topic + " names " + d.actual
+      + ", not the declared owner " + (d.declared || []).join(", ")));
   card.appendChild(head);
   const row = el("div", "exp-expert");
   row.appendChild(el("span", "exp-dim", "declared"));
@@ -1758,7 +1765,7 @@ function driftCard(d) {
     declared.appendChild(personLink(name, (d.declaredIds || [])[i]));
   });
   row.appendChild(declared);
-  row.appendChild(el("span", "exp-dim", "actual"));
+  row.appendChild(el("span", "exp-dim", "on record"));
   const actual = el("span", "exp-actual");
   actual.appendChild(personLink(d.actual, d.actualId));
   row.appendChild(actual);
@@ -1767,9 +1774,9 @@ function driftCard(d) {
 }
 
 
-// addRelated hangs the topics that share this one's experts under its card, so a
-// subject and its specialties read as one body of knowledge rather than as
-// unrelated rows that happen to sit near each other.
+// addRelated hangs the topics that share this one's people on record under its
+// card, so a subject and its specialties read as one body of record rather than
+// as unrelated rows that happen to sit near each other.
 async function addRelated(card, topic) {
   try {
     const res = await fetch("/api/related?topic=" + encodeURIComponent(topic) + "&limit=4",
@@ -1779,11 +1786,12 @@ async function addRelated(card, topic) {
     const rel = (data.related || []).filter((r) => r.topic !== topic);
     if (!rel.length) return;
     const line = el("p", "exp-also");
-    line.appendChild(el("span", "exp-dim", "shares experts with "));
+    line.appendChild(el("span", "exp-dim", "shares people on record with "));
     rel.forEach((r, i) => {
       if (i) line.appendChild(el("span", "exp-dim", ", "));
       const t = el("span", "exp-rel", r.topic);
-      t.title = Math.round(r.overlap * 100) + "% of its experts also hold " + topic +
+      t.title = Math.round(r.overlap * 100) + "% of the people on record for " + topic
+        + " are also on record for " + r.topic +
         (r.narrower ? ", and it is the narrower of the two" : "");
       line.appendChild(t);
     });

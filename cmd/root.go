@@ -114,8 +114,21 @@ func newRootCmd() *cobra.Command {
 	}
 
 	root := &cobra.Command{
-		Use:           "whotoask",
-		Short:         "Know who knows",
+		Use:   "whotoask",
+		Short: "Know who knows",
+		Long: `Ask a question about your work. WhoToAsk answers from a local index of the
+sources you connect (such as git, Slack, GitHub, Jira, Confluence, PagerDuty, and
+your org chart) with the people to talk to and the channels to ask in, best match
+first. With --mode llm, a model you choose sets the order instead.
+
+The order describes the record, not the person. It is not for performance
+reviews, layoffs, or any other employment decision.
+
+Start with a repository you already have, then ask a question. To try it on a
+built-in sample company first, run whotoask demo.`,
+		Example: `  whotoask index --source git --repo-path .
+  whotoask ask "who do I talk to about billing retries"
+  whotoask demo`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {

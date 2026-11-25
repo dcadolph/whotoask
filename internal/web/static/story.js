@@ -38,7 +38,7 @@
   const STEPS = [
     {
       title: "Ask in plain words",
-      why: "No syntax, no picking a tool. The answer is people, ranked, with a channel to ask in.",
+      why: "No syntax, no picking a tool. The answer is people, best match first, with a channel to ask in.",
       async prep() {
         location.hash = "#/";
         const input = document.getElementById("q");
@@ -53,8 +53,8 @@
       },
     },
     {
-      title: "The reasons are the ranking",
-      why: "No model weighed in. Match strength is arithmetic over the work itself, so every answer can be checked.",
+      title: "The reasons come from the record",
+      why: "In keyword mode no model weighs in. The order is counted from the record of who worked on what, and people active recently count for more. A reason beside a name says where that match came from, so it can be checked.",
       async prep() {
         location.hash = "#/";
         return waitFor("#people .card .chips");
@@ -76,7 +76,7 @@
     },
     {
       title: "What leaves if they leave",
-      why: "The same map, read the other way: the subjects this person holds alone are what the organization loses.",
+      why: "The same record, read the other way: the subjects where this person is the only one on record are the ones with nobody else on record to ask.",
       async prep() {
         if (!top) return null;
         location.hash = "#/exposure";
@@ -86,7 +86,7 @@
     },
     {
       title: "One map. Three questions.",
-      why: "Who knows, how it was solved, and where you are thin. Local by default, nothing sent to anyone.",
+      why: "Who to ask, how it was solved, and where you are thin. Local by default, nothing sent to anyone.",
       async prep() {
         return null; // closing card, no spotlight
       },

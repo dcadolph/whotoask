@@ -41,11 +41,11 @@ func TestFeedbackReordersPeople(t *testing.T) {
 	if got[0].Person.ID != "bob@corp.com" {
 		t.Errorf("top after votes = %s, want bob", got[0].Person.ID)
 	}
-	if r := got[0].Reasons[len(got[0].Reasons)-1]; r != "boosted by feedback" {
-		t.Errorf("bob last reason = %q, want boosted by feedback", r)
+	if r := got[0].Reasons[len(got[0].Reasons)-1]; r != personVoteReason {
+		t.Errorf("bob last reason = %q, want %q", r, personVoteReason)
 	}
-	if r := got[1].Reasons[len(got[1].Reasons)-1]; r != "lowered by feedback" {
-		t.Errorf("alice last reason = %q, want lowered by feedback", r)
+	if r := got[1].Reasons[len(got[1].Reasons)-1]; r != personVoteReason {
+		t.Errorf("alice last reason = %q, want %q", r, personVoteReason)
 	}
 }
 
@@ -193,7 +193,8 @@ func TestFeedbackFiresOnlyOnTypedTerms(t *testing.T) {
 			if got < want*0.999 || got > want*1.001 {
 				t.Errorf("score = %.4f, want %.4f (%.4f without the vote)", got, want, base)
 			}
-			if fired := last == "boosted by feedback"; fired != test.WantFired {
+			fired := last == "boosted by feedback" || last == personVoteReason
+			if fired != test.WantFired {
 				t.Errorf("last reason = %q, vote fired = %t, want %t", last, fired, test.WantFired)
 			}
 		})

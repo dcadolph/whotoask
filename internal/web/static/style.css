@@ -2,7 +2,7 @@
    slight navy undertone in dark. The one accent is the logo's navy (soft
    slate blue in dark mode), used sparingly for interaction: focus, active
    nav, links, the primary button. Green, amber, and red appear only as
-   semantic confidence dots, never as theme. Monospace is the texture for
+   semantic severity marks, never as theme. Monospace is the texture for
    data: emails, counts, reasons, chips, badges. No background gradients. */
 
 /* Themes: token sets selected by data-theme (radar = default, ink = black,
@@ -455,15 +455,6 @@ section h2 {
   box-shadow: var(--shadow);
 }
 
-.rank {
-  position: absolute;
-  top: 13px;
-  right: 15px;
-  font: 650 11px var(--mono);
-  color: var(--muted);
-  opacity: 0.55;
-}
-
 .card .name {
   font-size: 16px;
   font-weight: 650;
@@ -524,30 +515,13 @@ section h2 {
   color: var(--muted);
 }
 
-.conf {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 10px;
-  font: 600 11px var(--mono);
-  vertical-align: 2px;
+/* The use the findings must never be put to, under a profile and a risk view. */
+.not-for {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
-
-.conf::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.conf-strong { color: #16a34a; }
-.conf-moderate { color: #d97706; }
-.conf-weak { color: #dc2626; }
-
-:root[data-theme="radar"] .conf-strong, :root[data-theme="ink"] .conf-strong { color: #4ade80; }
-:root[data-theme="radar"] .conf-moderate, :root[data-theme="ink"] .conf-moderate { color: #fbbf24; }
-:root[data-theme="radar"] .conf-weak, :root[data-theme="ink"] .conf-weak { color: #f87171; }
 
 /* Feedback */
 
@@ -1340,7 +1314,7 @@ section h2 {
   cursor: pointer;
 }
 .exp-dep-controls button:hover { filter: brightness(1.08); }
-/* An expert's name doubles as the way to check their departure, so it has to
+/* A person's name doubles as the way to check their departure, so it has to
    look pressable without turning the list into a row of buttons. */
 .exp-name-btn {
   padding: 0;

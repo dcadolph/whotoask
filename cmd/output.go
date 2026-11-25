@@ -39,9 +39,21 @@ func (o *options) render(w io.Writer, v any, human func(io.Writer, style)) error
 	return writeJSON(w, v, false)
 }
 
-// notForLine closes every human rendering of a knowledge-risk finding.
-const notForLine = "Findings describe knowledge and systems at risk. " +
-	"They are not for performance or employment decisions."
+// notForLine closes every human rendering of a knowledge-risk finding. It is
+// the same promise the README makes, word for word.
+const notForLine = "WhoToAsk reads the record your team's tools keep. " +
+	"For a question, it lists the people and channels whose record matches, best match first. " +
+	"For a subject, it shows how that record is split among people. " +
+	"Both describe the record, not the person. " +
+	"A weak or missing match is not evidence about anyone, because work done in meetings, " +
+	"in pairing, or in tools WhoToAsk does not read leaves no record. " +
+	notForSentence + " " +
+	"A subject with one person on record is a sign the team needs a second person on it."
+
+// notForSentence is the one sentence every surface that reports on people
+// carries, the assessment summary and the MCP tool descriptions among them.
+const notForSentence = "Its findings must not be used for performance reviews, layoffs, " +
+	"or any other employment decision."
 
 // renderNotFor writes notForLine as the last line of a finding.
 func renderNotFor(w io.Writer, s style) {

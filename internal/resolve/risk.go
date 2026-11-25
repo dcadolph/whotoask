@@ -27,6 +27,10 @@ type RiskExpert struct {
 	// already moved on is a different and sharper one, and the two look
 	// identical without this.
 	Quiet bool `json:"quiet,omitempty"`
+	// Deactivated marks a person whose account is deactivated. They are also
+	// Quiet, but a closed account is a different fact from a pause in work and
+	// is said as itself.
+	Deactivated bool `json:"deactivated,omitempty"`
 }
 
 // TopicRisk is the knowledge-concentration risk for one topic: how few people
@@ -144,7 +148,8 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			total += w
 			experts = append(experts, RiskExpert{
 				ID: string(id), Name: personName(ix, id), Share: w,
-				Quiet: hasMovedOn(ix, id, model.ID(topic)),
+				Quiet:       hasMovedOn(ix, id, model.ID(topic)),
+				Deactivated: isDeactivated(ix, id),
 			})
 		}
 		if total <= 0 {
@@ -357,6 +362,12 @@ func hasMovedOn(ix *index.Index, id model.ID, topic model.ID) bool {
 		return false
 	}
 	return p.Topics[topic] > 0 && p.Recent[topic] == 0
+}
+
+// isDeactivated reports whether a person's account is deactivated.
+func isDeactivated(ix *index.Index, id model.ID) bool {
+	p := ix.Graph.People[ix.CanonicalID(id)]
+	return p != nil && p.Deactivated()
 }
 
 // levelRank orders the risk levels for sorting, most severe first.

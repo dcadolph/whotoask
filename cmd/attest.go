@@ -205,11 +205,11 @@ func attestPayload(report []resolve.TopicRisk) any {
 		}
 		critical++
 		if len(top) < 10 {
-			expert := t.Lead
-			if expert == "" && len(t.Experts) > 0 {
-				expert = t.Experts[0].Name
+			lead := t.Lead
+			if lead == "" && len(t.Experts) > 0 {
+				lead = t.Experts[0].Name
 			}
-			top = append(top, map[string]any{"topic": t.Topic, "bus_factor": t.BusFactor, "sole_expert": expert})
+			top = append(top, map[string]any{"topic": t.Topic, "bus_factor": t.BusFactor, "lead": lead})
 		}
 	}
 	payload := map[string]any{

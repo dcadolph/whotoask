@@ -1,6 +1,6 @@
-Ownership drift  2 of 5 judged areas (40%) are not led by their owner of record
+Ownership drift  2 of 5 judged areas (40%) have a lead on record other than the declared owner
   1 more area owned only by teams or automation, which drift cannot judge
-  1 with no recorded work at all, 1 who work elsewhere but never here, 1 out-worked in their own area
+  1 with no work on record by the declared owner, 1 with their work on record elsewhere only, 1 where the record names someone other than the declared owner
 
-  billing  declared kim-doe  → actual Lee Roe
-  kafka    declared a, b  → actual Sam Poe
+  billing  declared kim-doe  → lead on record Lee Roe
+  kafka    declared a, b  → lead on record Sam Poe

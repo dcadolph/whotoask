@@ -20,7 +20,7 @@ func newFeedbackCmd(opts *options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "feedback",
 		Short: "Confirm, correct, review, or clear answer feedback",
-		Long: `Votes teach the ranking: a helpful vote lifts a result for that question and
+		Long: `Votes move the order: a helpful vote lifts a result for that question and
 its close variants, a not-helpful vote lowers it, capped so feedback tunes
 answers without burying the evidence. Votes live in feedback.json next to the
 index and survive re-indexing.

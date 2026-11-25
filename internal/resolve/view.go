@@ -10,29 +10,6 @@ import (
 	"github.com/dcadolph/whotoask/internal/model"
 )
 
-// Strength labels partition the zero-to-one match range for display.
-const (
-	// strongStrength is the floor of a strong match.
-	strongStrength = 0.75
-	// moderateStrength is the floor of a moderate match.
-	moderateStrength = 0.45
-)
-
-// StrengthLabel names a match strength for display: strong, moderate, or
-// weak. It returns the empty string for zero, when the strength is unknown.
-func StrengthLabel(c float64) string {
-	switch {
-	case c <= 0:
-		return ""
-	case c >= strongStrength:
-		return "strong"
-	case c >= moderateStrength:
-		return "moderate"
-	default:
-		return "weak"
-	}
-}
-
 // roundStrength trims a strength to two decimals for stable JSON output.
 func roundStrength(c float64) float64 {
 	return math.Round(c*100) / 100

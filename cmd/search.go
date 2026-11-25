@@ -11,16 +11,16 @@ import (
 )
 
 // newSearchCmd builds the search command, a direct lookup of people and channels
-// by name, email, title, team, or topic. It differs from ask, which ranks people
-// by who knows a subject; search just finds an entity by what it is called.
+// by name, email, title, team, or topic. It differs from ask, which orders people
+// by their record on a subject; search just finds an entity by what it is called.
 func newSearchCmd(opts *options) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Find people and channels by name, email, title, team, or topic",
 		Long: `Find people and channels whose name, email, title, team, or topic contains the
-query, ranked by how directly they match. This is a direct lookup; use ask to
-rank people by who knows a subject.
+query, most direct match first. This is a direct lookup. Use ask to find who to
+ask about a subject.
 
 Examples:
   whotoask search kim

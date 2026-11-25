@@ -305,7 +305,7 @@ func (ix *Index) SearchSplit(query string, limit int) (people, departed []model.
 			}
 			reasons := e.reasons
 			if net := nets[pid]; net != 0 {
-				reasons = append(reasons, feedbackReason(net))
+				reasons = append(reasons, personVoteReason)
 			}
 			list[i].Reasons = reasons
 			list[i].Strength = e.shown * coveredShare(matched[pid], covers, originals)
@@ -807,13 +807,13 @@ func (ix *Index) reasons(
 			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
 			continue
 		}
-		// Knowing a subject best is not the same as still being in it. On a
-		// real repository the leading expert of two subjects in five had
+		// Being on record for a subject is not the same as still being in it.
+		// On a real repository the lead on record of two subjects in five had
 		// stopped touching them, and was less than half as likely to still
 		// hold the subject six months on, so sending somebody to ask them
 		// without saying so is how an answer goes stale.
 		if field == "topic" && quietOn(p, found) {
-			field += ", not lately"
+			field += ", no recent activity on record"
 		}
 		// A correction has to name what it corrected to. Told only that
 		// "zigby" was fuzzy, a reader cannot tell whether whotoask read it as

@@ -1160,14 +1160,14 @@ func TestTheOrgChartCanBeTakenWithYou(t *testing.T) {
 	}
 	// The export is only worth having if it carries the risk findings, which are
 	// the reason to draw this chart rather than any other org chart.
-	for _, col := range []string{"Holds alone", "Gone quiet", "Reports to"} {
+	for _, col := range []string{"Only person on record for", "No recent activity on record", "Reports to"} {
 		if !strings.Contains(js, `"`+col+`"`) {
 			t.Errorf("the org chart export has no %q column", col)
 		}
 	}
 	// The panel has to say what the bar on the seat means, not leave it to a
 	// tooltip that never appears on a touch screen.
-	for _, want := range []string{"Only person holding", "gone quiet on"} {
+	for _, want := range []string{"Only person on record for", "no recent activity on record"} {
 		if !strings.Contains(strings.ToLower(js), strings.ToLower(want)) {
 			t.Errorf("the detail panel never shows %q", want)
 		}
@@ -1242,7 +1242,7 @@ func TestTheNavSaysWhichQuestionEachGroupAnswers(t *testing.T) {
 		Recall:   func(context.Context, string, string, int) (recall.Answer, error) { return recall.Answer{}, nil },
 		Exposure: func() Exposure { return Exposure{} },
 	})
-	for _, group := range []string{"Who knows what", "How it was done", "Where it is thin"} {
+	for _, group := range []string{"Who works on what", "How it was done", "Where it is thin"} {
 		if !strings.Contains(full, group) {
 			t.Errorf("the sidebar never says %q, so the three questions are invisible again", group)
 		}
@@ -1259,7 +1259,7 @@ func TestTheNavSaysWhichQuestionEachGroupAnswers(t *testing.T) {
 	if strings.Contains(bare, "How it was done") {
 		t.Error("the recall heading renders with no recall view under it")
 	}
-	if !strings.Contains(bare, "Who knows what") {
+	if !strings.Contains(bare, "Who works on what") {
 		t.Error("the directory heading vanished; it does not depend on anything optional")
 	}
 }

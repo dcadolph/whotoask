@@ -40,9 +40,6 @@ func Format(query string, ans resolve.Answer) string {
 			if m.Person.Deactivated() {
 				line += " · _deactivated_"
 			}
-			if label := resolve.StrengthLabel(m.Strength); label != "" {
-				line += " · " + label + " match"
-			}
 			b.WriteString(line)
 			b.WriteString("\n")
 		}

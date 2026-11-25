@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whotoask</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=34">
+  <link rel="stylesheet" href="/static/style.css?v=35">
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 </head>
 <body{{if .Voting}} data-voting="1"{{end}}>
@@ -28,9 +28,9 @@
 
         {{/* whotoask answers three different questions for three different
              people, and a flat list of views hides that. The headings are the
-             questions: who holds what, how it was done last time, and where the
+             questions: who works on what, how it was done last time, and where the
              organization is thin. */}}
-        <p class="nav-group">Who knows what</p>
+        <p class="nav-group">Who works on what</p>
         <a href="#/people" data-view="people">People
           <span class="nav-count" data-count="people"></span></a>
         <a href="#/channels" data-view="channels">Channels
@@ -88,7 +88,7 @@
                 Meaning
               </button>
               <button type="button" class="seg-btn" data-mode="llm" aria-pressed="false"
-                      data-tip="A model picks the best matches and writes a recommendation. Pick a provider below.">
+                      data-tip="A model sets the order of the matches the index found. Pick a provider below.">
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8z"/><path d="M12.6 10.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></svg>
                 AI
               </button>
@@ -182,9 +182,13 @@
           <h2>Where you are exposed</h2>
           <p id="exp-status" class="dir-count" role="status"></p>
         </div>
-        <p class="exp-lede">Deterministic over the graph, no model required. Anything here
-          rests on one person when a single holder covers most of the work, and each row
-          is checkable against the record it was counted from.</p>
+        <p class="exp-lede">Deterministic over the graph, no model required. Everything
+          here describes the record, not the person: a subject shows up when one person
+          covers most of its record, and each row is checkable against the record it was
+          counted from. Work done in meetings, in pairing, or in tools WhoToAsk does not
+          read leaves no record.</p>
+        <p class="not-for">Its findings must not be used for performance reviews, layoffs,
+          or any other employment decision.</p>
 
         <div id="exp-cards" class="exp-cards"></div>
 
@@ -195,22 +199,26 @@
         <div id="exp-places" class="exp-list"></div>
 
         <h3 class="exp-head" id="exp-sec-regions">Joined work</h3>
-        <p class="exp-note">Subjects worked on together where the same person leads every
-          one. Heavier than one concentrated subject: whoever takes it over has to learn
-          the whole of it.</p>
+        <p class="exp-note">Subjects worked on together where the same person is the lead on
+          record for every one. Heavier than one concentrated subject: whoever takes it
+          over has to learn the whole of it.</p>
         <div id="exp-regions" class="exp-list"></div>
 
         <h3 class="exp-head" id="exp-sec-spans">One-person connections</h3>
         <p class="exp-note">Subjects only one person has ever worked across. Both sides have
-          their own experts, so counting experts per subject never shows it: what rests on
-          one person is the knowledge that they belong together.</p>
+          their own people on record, so counting people per subject never shows it: what
+          rests on one person is the record that they belong together.</p>
         <div id="exp-spans" class="exp-list"></div>
 
         <h3 class="exp-head" id="exp-sec-risk">Knowledge concentration</h3>
+        <p class="exp-note">How each subject's record is split among the people on it. A
+          share is that person's part of the subject's record, which counts declared
+          ownership such as CODEOWNERS as well as activity.</p>
         <div id="exp-risk" class="exp-list"></div>
         <h3 class="exp-head" id="exp-sec-drift">Where nobody is behind them</h3>
-        <p class="exp-note">Name a person and see what loses its strongest expert the day
-          they leave. Click any expert above to check them.</p>
+        <p class="exp-note">Name a person and see which subjects they are the only person on
+          record for, and which they are the lead on record for. Click any name above to
+          check them.</p>
         <div class="exp-dep-controls">
           <input id="exp-dep-input" type="text" list="exp-dep-people"
             placeholder="Name or email, e.g. Gavin Hudson" aria-label="Person who is leaving">
@@ -220,7 +228,7 @@
         <div id="exp-dep-result" class="exp-list"></div>
 
         <h3 class="exp-head">Ownership drift</h3>
-        <p class="exp-note">Where the owner on paper is not the one doing the work.</p>
+        <p class="exp-note">Where the record names someone other than the declared owner.</p>
         <div id="exp-drift" class="exp-list"></div>
 
         <h3 class="exp-head">Take it with you</h3>
@@ -274,7 +282,7 @@
   </div>
 
   <script src="/static/portable.js?v=1"></script>
-  <script src="/static/app.js?v=38"></script>
-  <script src="/static/story.js?v=2"></script>
+  <script src="/static/app.js?v=39"></script>
+  <script src="/static/story.js?v=3"></script>
 </body>
 </html>

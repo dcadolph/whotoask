@@ -37,7 +37,7 @@ type goldenCase struct {
 // goldenCases lists every entry point with a populated and an empty input.
 func goldenCases() []goldenCase {
 	answer := resolve.JSONAnswer{
-		Summary: "Two people and one channel know about billing.",
+		Summary: "Talk to Kim Doe (Staff Engineer); ask in #payments.",
 		People: []resolve.JSONPerson{
 			{Name: "Kim Doe", Title: "Staff Engineer", Team: "Payments", Strength: 0.92,
 				Reasons: []string{"commits to billing", "answers in #payments"}},
@@ -86,10 +86,14 @@ func goldenCases() []goldenCase {
 	}
 	risk := []resolve.TopicRisk{
 		{Topic: "billing", Level: "critical", Concentration: 0.95, BusFactor: 1,
-			Includes: []string{"invoicing"},
-			Experts:  []resolve.RiskExpert{{Name: "Kim Doe", Share: 0.95, Quiet: true}}},
+			Includes: []string{"invoicing"}, Lead: "Kim Doe", LeadID: "kim",
+			Experts: []resolve.RiskExpert{{ID: "kim", Name: "Kim Doe", Share: 0.95, Quiet: true}}},
 		{Topic: "kafka", Level: "elevated", Concentration: 0.6, BusFactor: 2,
-			Experts: []resolve.RiskExpert{{Name: "Lee Roe", Share: 0.6}}},
+			Lead: "Lee Roe", LeadID: "lee",
+			Experts: []resolve.RiskExpert{
+				{ID: "lee", Name: "Lee Roe", Share: 0.6},
+				{ID: "ann", Name: "Ann Gone", Share: 0.4, Quiet: true, Deactivated: true},
+			}},
 		{Topic: "docs", Level: "ok", Concentration: 0, BusFactor: 4},
 	}
 	departure := resolve.DepartureImpact{
@@ -97,7 +101,7 @@ func goldenCases() []goldenCase {
 		Regions: []resolve.Region{{Lead: "Kim Doe", Topics: []string{"billing", "invoicing"}}},
 	}
 	related := []resolve.TopicRelation{
-		{Topic: "invoicing", Overlap: 0.8, Because: "same experts", Together: 0.5},
+		{Topic: "invoicing", Overlap: 0.8, Because: "same people on record", Together: 0.5},
 		{Topic: "kafka-lag", Overlap: 0.3, Narrower: true, Because: "shared on-call",
 			Spanned: 1, SoleName: "Kim Doe"},
 		{Topic: "docs", Overlap: 0.1, Because: "one shared person"},

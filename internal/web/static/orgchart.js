@@ -241,10 +241,10 @@
 		if (n.kind === "person") d.querySelector(".ti").textContent = n.title || " ";
 		if (n.team) d.querySelector(".tm").textContent = n.team;
 		if (n.alone && n.alone.length) {
-			d.title = "Only person holding: " + n.alone.join(", ")
-				+ ((n.quiet || []).length ? "\nStopped working on: " + n.quiet.join(", ") : "");
+			d.title = "Only person on record for: " + n.alone.join(", ")
+				+ ((n.quiet || []).length ? "\nNo recent activity on record: " + n.quiet.join(", ") : "");
 		} else if (n.quiet && n.quiet.length) {
-			d.title = "Stopped working on: " + n.quiet.join(", ");
+			d.title = "No recent activity on record: " + n.quiet.join(", ");
 		}
 		el.nodes.appendChild(d);
 		domNodes.set(n.id, d);
@@ -462,9 +462,9 @@
 			(reports.length ? '<div class="d-people">' + reports.map(personRow).join("") + '</div>' : '<div class="d-empty-line">None</div>') + '</div>';
 		// The bar on the seat says there is a risk here. This says what it is,
 		// which until now was only reachable by hovering the node.
-		if ((n.alone || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">Only person holding</div><div class="d-chips">' +
+		if ((n.alone || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">Only person on record for</div><div class="d-chips">' +
 			n.alone.map(function (t) { return '<span class="d-chip d-chip-alone">' + esc(t) + '</span>'; }).join("") + '</div></div>';
-		if ((n.quiet || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">Holds, but has gone quiet on</div><div class="d-chips">' +
+		if ((n.quiet || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">On record for, with no recent activity on record</div><div class="d-chips">' +
 			n.quiet.map(function (t) { return '<span class="d-chip d-chip-quiet">' + esc(t) + '</span>'; }).join("") + '</div></div>';
 		if (topics.length) h += '<div class="d-sec"><div class="d-lab">Works on</div><div class="d-chips">' +
 			topics.map(function (t) { return '<span class="d-chip">' + esc(t) + '</span>'; }).join("") + '</div></div>';
@@ -478,8 +478,8 @@
 			if (n.email) lines.push(n.email);
 			if (mgrName) lines.push("Reports to: " + mgrName);
 			if (reports.length) lines.push("Direct reports: " + reports.length);
-			if ((n.alone || []).length) lines.push("Only person holding: " + n.alone.join(", "));
-			if ((n.quiet || []).length) lines.push("Gone quiet on: " + n.quiet.join(", "));
+			if ((n.alone || []).length) lines.push("Only person on record for: " + n.alone.join(", "));
+			if ((n.quiet || []).length) lines.push("No recent activity on record: " + n.quiet.join(", "));
 			if (topics.length) lines.push("Works on: " + topics.join(", "));
 			return lines.join("\n");
 		}, "copy"));
@@ -619,7 +619,7 @@
 		rows.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
 		downloadCSV("whotoask-org-chart.csv", [
 			"Name", "Title", "Team", "Org", "Email", "Reports to", "Direct reports",
-			"Holds alone", "Gone quiet", "Works on"
+			"Only person on record for", "No recent activity on record", "Works on"
 		], rows.map(function (r) { return r[2]; }));
 		toast("Exported " + rows.length + (rows.length === 1 ? " seat" : " seats"));
 	}

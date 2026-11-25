@@ -10,15 +10,15 @@ import (
 	"github.com/dcadolph/whotoask/internal/render"
 )
 
-// newNearCmd builds the near command, which ranks the people who work nearest a
+// newNearCmd builds the near command, which lists the people who work nearest a
 // given person by shared groups and shared topics.
 func newNearCmd(opts *options) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "near PERSON",
 		Short: "Show who works near a person, by shared groups and topics",
-		Long: `Rank the people nearest PERSON by shared team and channel membership and shared
-topics. Co-membership is normalized by group size, so a tight team counts for far
+		Long: `List the people nearest PERSON, nearest first, by shared team and channel
+membership and shared topics. Co-membership is normalized by group size, so a tight team counts for far
 more than a broad channel, org-wide groups are ignored, and permission tiers of
 one group (store-admin, store-write) are folded together. PERSON is an email, an
 id, or an exact name.

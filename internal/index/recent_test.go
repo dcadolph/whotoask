@@ -36,10 +36,10 @@ func TestAnswerSaysWhenAnExpertHasMovedOn(t *testing.T) {
 		t.Fatalf("%s was not returned for %q", who, query)
 		return ""
 	}
-	if got := find("zigbee", "Moved On"); !strings.Contains(got, "not lately") {
+	if got := find("zigbee", "Moved On"); !strings.Contains(got, "no recent activity on record") {
 		t.Errorf("reasons = %q, want it to say they have stopped working on it", got)
 	}
-	if got := find("mqtt", "Still In It"); strings.Contains(got, "not lately") {
+	if got := find("mqtt", "Still In It"); strings.Contains(got, "no recent activity on record") {
 		t.Errorf("reasons = %q, want no such note for somebody still in it", got)
 	}
 }
@@ -56,7 +56,7 @@ func TestNoRecentRecordClaimsNothing(t *testing.T) {
 	}})
 	ix.Canonicalize()
 	for _, m := range ix.Search("kafka", 5) {
-		if strings.Contains(strings.Join(m.Reasons, " "), "not lately") {
+		if strings.Contains(strings.Join(m.Reasons, " "), "no recent activity on record") {
 			t.Errorf("reasons = %v, want no claim when the source never said", m.Reasons)
 		}
 	}

@@ -48,7 +48,7 @@ func TestFactMentions(t *testing.T) {
 }
 
 // TestAttestPayload pins the sealed claim's shape: only critical topics count,
-// the top list caps at ten, and the sole expert is the first expert named.
+// the top list caps at ten, and the lead falls back to the first person on record.
 func TestAttestPayload(t *testing.T) {
 	t.Parallel()
 	report := make([]resolve.TopicRisk, 0, 13)
@@ -73,8 +73,8 @@ func TestAttestPayload(t *testing.T) {
 		t.Fatalf("top_critical len = %d, want capped at 10", len(top))
 	}
 	first, ok := top[0].(map[string]any)
-	if !ok || first["sole_expert"] != "Expert 0" {
-		t.Errorf("first sole_expert = %v, want Expert 0", first["sole_expert"])
+	if !ok || first["lead"] != "Expert 0" {
+		t.Errorf("first lead = %v, want Expert 0", first["lead"])
 	}
 	if m["single_holder"] != 12 {
 		t.Errorf("single_holder = %v, want 12: the payload must carry the plainest "+

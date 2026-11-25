@@ -28,8 +28,11 @@ func newRiskCmd(opts *options) *cobra.Command {
 		Use:   "risk [person]",
 		Short: "Show where knowledge is dangerously concentrated",
 		Long: `Score knowledge concentration across the graph: the topics where one or two
-people hold most of the expertise, so a single departure is visible before it
-hurts. Name a person for the offboarding view: what the record shows only them in.
+people hold most of the record, so a subject resting on one person is visible
+before it hurts. Name a person to see the subjects they are the lead on record for.
+
+WhoToAsk describes the record, not the person. Its findings must not be used
+for performance reviews, layoffs, or any other employment decision.
 
 Deterministic arithmetic over the graph, no model needed.
 
@@ -98,7 +101,7 @@ const briefRows = 100
 
 // briefFindings is what an assessment has already worked out and a brief would
 // otherwise have to do without: the places, their check commands, what moving
-// areas has cost, the identity judgements, and who stands nearest to each key
+// areas has cost, the identity judgments, and who stands nearest to each key
 // person. They are gathered into one struct because they arrive together and
 // half of them are empty whenever no repository was read.
 type briefFindings struct {
@@ -191,7 +194,7 @@ func riskHTML(
 const briefSystems = 15
 
 // writeRiskHTML renders the knowledge-risk brief, generated at now, to a file. It has no
-// repository in front of it, so it carries the identity judgements, which come
+// repository in front of it, so it carries the identity judgments, which come
 // from the index alone, and none of the place findings, which do not.
 func writeRiskHTML(cmd *cobra.Command, ix *index.Index, path string, limit int, now time.Time) error {
 	split := resolve.SplitNames(ix)

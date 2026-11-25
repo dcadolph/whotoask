@@ -31,12 +31,14 @@ func newAskCmd(opts *options) *cobra.Command {
 		Use:   "ask [question]",
 		Short: "Ask who to talk to about something",
 		Long: `Answer a question from the index: the people to talk to and the channels to
-ask in, each with reasons and a confidence from zero to one.
+ask in, best match first, with the reasons a row matched when the record gives
+them. JSON output also carries each row's match strength, from zero to one. The
+order describes the record, not the person.
 
 Modes:
   keyword   no model, deterministic, always works (default)
   semantic  blend meaning with your words; needs an index built with --embed
-  llm       a local Ollama model re-ranks and writes a recommendation
+  llm       a model sets the order; the summary is still written locally
 
 Examples:
   whotoask ask "who do I talk to about billing retries"
@@ -83,7 +85,7 @@ Examples:
 	f.StringVar(&openaiURL, "openai-url", "",
 		"OpenAI-compatible base URL including the version path, e.g. http://localhost:1234/v1.")
 	f.StringVar(&fbStrength, "feedback", "normal",
-		"How hard votes move ranking: off, low, normal, or high.")
+		"How hard votes move the order: off, low, normal, or high.")
 	return cmd
 }
 
@@ -101,13 +103,13 @@ func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, query string, ans resolve
 		fmt.Fprintln(w, "No one is indexed yet: run `whotoask index` against a source first.")
 		return
 	}
-	// Ask ranks by who knows a subject. A question naming a person is answered
+	// Ask orders people by their record on a subject. A question naming a person is answered
 	// directly, but a team, a channel, or a half-remembered name still returns
 	// nothing while the entity sits in the index, so offer the closest matches
 	// by name before the generic hint and point a misdirected question
 	// somewhere useful.
 	if hits := suggestFromSearch(ix, query, 5); len(hits) > 0 {
-		fmt.Fprintln(w, "No expertise match for that. Closest by name:")
+		fmt.Fprintln(w, "No match on record for that. Closest by name:")
 		for _, h := range hits {
 			fmt.Fprintln(w, "  "+suggestionLabel(h))
 		}

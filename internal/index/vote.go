@@ -125,8 +125,12 @@ func (ix *Index) feedbackFactor(net int) float64 {
 	return math.Pow(step, float64(net))
 }
 
-// feedbackReason describes an applied net vote for the reasons list, or
-// returns the empty string when no votes applied.
+// personVoteReason is the note on a person row whose place votes moved. It says
+// what moved the row, not that the person was judged better or worse.
+const personVoteReason = "moved by votes on this question"
+
+// feedbackReason describes an applied net vote for a channel's reasons list,
+// or returns the empty string when no votes applied.
 func feedbackReason(net int) string {
 	switch {
 	case net > 0:

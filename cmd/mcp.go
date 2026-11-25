@@ -27,17 +27,17 @@ func newMCPCmd(opts *options) *cobra.Command {
 		Use:   "mcp",
 		Short: "Serve whotoask to MCP clients over stdio",
 		Long: `Serve the index over the Model Context Protocol, so agent clients can ask
-who knows what mid-conversation. Register it once:
+who to talk to mid-conversation. Register it once:
 
   Claude Code:     claude mcp add whotoask -- whotoask mcp
   Claude Desktop:  add {"whotoask": {"command": "whotoask", "args": ["mcp"]}}
                    under mcpServers in claude_desktop_config.json
 
-Tools: whotoask_ask (keyword or semantic ranking), whotoask_recall (past
+Tools: whotoask_ask (keyword or semantic order), whotoask_recall (past
 conversations one person took part in), whotoask_person (full
 profile), and whotoask_directory (people, channels, teams, topics). There is
 no llm mode here on purpose: the calling agent is already a model, so it
-gets ranked candidates with reasons and does its own reading.
+gets candidates, best match first, with reasons, and does its own reading.
 
 Answers flow to whichever agent you wire this into, and to that agent's
 model. Wiring it in is the opt-in.`,
@@ -77,7 +77,8 @@ func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
 		Description: "Find the past conversation where a person worked something out, and who " +
 			"was in it. Returns people, place, date, and a link back to the conversation, " +
 			"never the messages themselves. Every answer covers only the named person's own " +
-			"conversations. Ask about the person running whotoask unless told otherwise.",
+			"conversations. Ask about the person running whotoask unless told otherwise." +
+			mcpNotFor,
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -113,6 +114,10 @@ func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
 	})
 }
 
+// mcpNotFor closes every tool description, so the calling model reads the
+// limit on use alongside what the tool does.
+const mcpNotFor = " WhoToAsk describes the record, not the person. " + notForSentence
+
 // registerMCPTools wires the ask, person, and directory tools over the engine.
 func registerMCPTools(srv *mcp.Server, eng *engine.Engine, embedModel, ollamaURL string) {
 	dir := resolve.BuildDirectory(eng.Index())
@@ -126,7 +131,9 @@ func registerMCPAsk(srv *mcp.Server, eng *engine.Engine, embedModel, ollamaURL s
 	srv.AddTool(mcp.Tool{
 		Name: "whotoask_ask",
 		Description: "Find who to talk to and which channel to ask in about a topic, " +
-			"ranked with reasons and strength from the organization's indexed work tools.",
+			"best match first, from the organization's indexed work tools. Rows carry reasons " +
+			"when the record gives them, and a match strength that does not set the order." +
+			mcpNotFor,
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -143,7 +150,7 @@ func registerMCPAsk(srv *mcp.Server, eng *engine.Engine, embedModel, ollamaURL s
 		var in struct {
 			// Question is what the caller needs help with.
 			Question string `json:"question"`
-			// Mode selects keyword or semantic ranking.
+			// Mode selects keyword or semantic matching.
 			Mode string `json:"mode"`
 			// Limit caps results per section.
 			Limit int `json:"limit"`
@@ -171,8 +178,9 @@ func registerMCPAsk(srv *mcp.Server, eng *engine.Engine, embedModel, ollamaURL s
 func registerMCPPerson(srv *mcp.Server, eng *engine.Engine) {
 	srv.AddTool(mcp.Tool{
 		Name: "whotoask_person",
-		Description: "Everything whotoask knows about one person: title, team, org, manager, " +
-			"merged identities, channels, and expertise topics. Use the id from whotoask_ask results.",
+		Description: "The record whotoask holds on one person: title, team, org, manager, " +
+			"merged identities, channels, and the topics they are on record for. " +
+			"Use the id from whotoask_ask results." + mcpNotFor,
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -202,7 +210,8 @@ func registerMCPDirectory(srv *mcp.Server, dir *resolve.Directory) {
 	srv.AddTool(mcp.Tool{
 		Name: "whotoask_directory",
 		Description: "Browse everything indexed: people with teams and topics, channels with " +
-			"member counts, teams with sizes, or topics with how many people carry each.",
+			"member counts, teams with sizes, or topics with how many people are on record " +
+			"for each." + mcpNotFor,
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

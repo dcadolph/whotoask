@@ -124,7 +124,7 @@ The output directory holds the deliverable:
 
   summary.md           the executive summary: findings, questions, actions
   report.html          the knowledge-risk brief, readable without whotoask
-  findings.json        every scored topic: bus factor, level, experts
+  findings.json        every scored topic: bus factor, level, people on record
   ownership.json       where the owner on paper is not the one doing the work
   systems.json         each significant directory and who its work rests on
   checks.json          a git command per system, so any row can be checked
@@ -457,7 +457,7 @@ func assessDepartures(
 	return out
 }
 
-// identityRecord is every judgement an assessment made about who is who.
+// identityRecord is every judgment an assessment made about who is who.
 //
 // It is the first thing to check when a finding looks wrong, because every
 // number in the deliverable rests on it: one person counted twice halves the
@@ -719,28 +719,29 @@ var assessFileNotes = map[string]string{
 		"                     raises for management, and the actions it suggests.",
 	"report.html": "The knowledge-risk brief. Open it in a browser.",
 	"findings.json": "Every scored subject: bus factor, risk level, and the\n" +
-		"                     people who hold it.",
+		"                     people on record for it.",
 	"ownership.json": "Areas whose declared owner is not the person doing the\n" +
 		"                     work in them.",
 	"systems.json": "Each significant directory of the code base and the\n" +
 		"                     people its observed work rests on, breadth-discounted so\n" +
-		"                     wide-ranging committers do not outrank owners.",
+		"                     wide-ranging committers are not listed above owners.",
 	"departures.json": "For each of the most load-bearing people, the subjects\n" +
 		"                     the record shows resting on them: sole means nobody else\n" +
 		"                     appears in the record for it at all.",
 	"crossings.json": "Pairs of subjects only one person has ever worked\n" +
-		"                     across. Both may have plenty of experts; the link\n" +
+		"                     across. Both may have many people on record. The link\n" +
 		"                     between them has one.",
 	"joined-work.json": "Bodies of subjects that change together where the same\n" +
-		"                     person leads every one, so they would be picked up as a\n" +
-		"                     whole rather than a subject at a time.",
+		"                     person is the lead on record for every one, so they\n" +
+		"                     would be picked up as a whole rather than a subject at\n" +
+		"                     a time.",
 	"identity.json": "Which records were judged to be the same person and why,\n" +
 		"                     and which same-named records were left apart. Check this\n" +
 		"                     first if a finding looks wrong: every number rests on it.",
 	"successors.json": "For each key person, who stands nearest to what rests on\n" +
 		"                     them, with the evidence: works there already, has\n" +
 		"                     reviewed it, shares the subjects. Nearest by the record,\n" +
-		"                     not a judgement of ability.",
+		"                     not a judgment of ability.",
 	"checks.json": "One paste-ready git command per reported system, counting\n" +
 		"                     the same history the finding was counted from, so any\n" +
 		"                     row can be checked without whotoask.",

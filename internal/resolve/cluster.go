@@ -29,11 +29,11 @@ type TopicRelation struct {
 	// Narrower marks a topic that looks like a specialty of the source topic:
 	// its experts are a subset, and there are fewer of them.
 	Narrower bool `json:"narrower"`
-	// Experts is how many people hold the related topic. Overlap alone cannot
+	// Experts is how many people are on record for the related topic. Overlap alone cannot
 	// order these: a subject one person happens to hold overlaps perfectly with
 	// anything else they hold, so without this the strongest relationships are
 	// buried under every incidental one.
-	Experts int `json:"experts"`
+	Experts int `json:"on_record"`
 	// Because names the evidence: the two subjects are worked on together, or the
 	// same people hold both. They are close to independent of one another, and
 	// the first is the stronger of the two, so it is worth saying which is
@@ -56,8 +56,8 @@ const (
 	// becauseTogether means one piece of work touched both subjects: one
 	// commit, one ticket, one page, or one pull request.
 	becauseTogether = "worked on together"
-	// becauseExperts means the same people hold both.
-	becauseExperts = "shared experts"
+	// becauseExperts means the same people are on record for both.
+	becauseExperts = "same people on record"
 )
 
 // Related returns the topics whose experts substantially overlap with topic's,

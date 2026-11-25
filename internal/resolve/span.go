@@ -31,9 +31,9 @@ type Span struct {
 	// group it is the weakest crossing holding it together, since that is what
 	// the whole finding rests on.
 	Together float64 `json:"together"`
-	// Experts is how many people hold the subjects between them, which is what
-	// makes the finding surprising: they are not short of experts.
-	Experts int `json:"experts"`
+	// Experts is how many people are on record for the subjects between them,
+	// which is what makes the finding surprising: they are not short of people.
+	Experts int `json:"on_record"`
 }
 
 // Size is how many subjects the finding joins.

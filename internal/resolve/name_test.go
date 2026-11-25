@@ -108,8 +108,8 @@ func TestNameMatchNamesWhatTheyKnow(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 	why := strings.Join(ans.People[0].Reasons, " ")
-	if !strings.Contains(why, "knows vacation") {
-		t.Errorf("reasons = %v, want them to say what she knows", ans.People[0].Reasons)
+	if !strings.Contains(why, "on record for vacation") {
+		t.Errorf("reasons = %v, want them to say what she is on record for", ans.People[0].Reasons)
 	}
 }
 

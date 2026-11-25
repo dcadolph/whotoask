@@ -16,7 +16,7 @@ func newRelatedCmd(opts *options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "related <topic>",
 		Short: "Show the topics that belong to the same body of knowledge",
-		Long: `Report the topics whose experts overlap with a topic's own. Organizations name
+		Long: `Report the topics whose people on record overlap with a topic's own. Organizations name
 one subject several ways, and a topic usually has specialties underneath it.
 Overlap over the people who do the work finds both without a taxonomy anyone had
 to write: a topic held by the same people is the same body of knowledge, and one

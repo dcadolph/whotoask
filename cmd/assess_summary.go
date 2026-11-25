@@ -106,8 +106,9 @@ func writeSummaryScope(b *strings.Builder, ix *index.Index, res *assessment, c a
 	b.WriteString(concentrationLine(c))
 	if c.Quiet > 0 {
 		fmt.Fprintf(b,
-			"Sharper than any of those: %d subjects rest on somebody who has already "+
-				"stopped working on them.\n", c.Quiet)
+			"Sharper than any of those: %d %s a lead on record with no recent activity "+
+				"on %s.\n",
+			c.Quiet, pick(c.Quiet, "subject has", "subjects have"), pick(c.Quiet, "it", "them"))
 	}
 	if ownership.Declared > 0 {
 		fmt.Fprintf(b,
@@ -128,7 +129,8 @@ func writeSummaryScope(b *strings.Builder, ix *index.Index, res *assessment, c a
 	}
 	b.WriteString("\nThe language throughout is deliberate: whotoask measures observed work, " +
 		"not competence. A finding says what the record shows and who it points to, " +
-		"and every one traces to the evidence in the data files beside this summary.\n")
+		"and every one traces to the evidence in the data files beside this summary. " +
+		notForSentence + "\n")
 	b.WriteString(rampParagraph(res.Ramp))
 	b.WriteString(assessLimits(res.Split))
 }
@@ -146,12 +148,12 @@ func writeSummaryDepartures(b *strings.Builder, departures []resolve.DepartureIm
 			line := fmt.Sprintf("- %s: ", d.Name)
 			switch {
 			case len(d.Sole) > 0 && len(d.Top) > 0:
-				line += fmt.Sprintf("sole holder of %s; leads %s",
+				line += fmt.Sprintf("only person on record for %s, and the lead on record for %s",
 					listSome(d.Sole), listSome(d.Top))
 			case len(d.Sole) > 0:
-				line += "sole holder of " + listSome(d.Sole)
+				line += "only person on record for " + listSome(d.Sole)
 			default:
-				line += "leads " + listSome(d.Top)
+				line += "the lead on record for " + listSome(d.Top)
 			}
 			b.WriteString(line + "\n")
 			b.WriteString(successionLine(d.Person, successors))
@@ -195,13 +197,13 @@ func writeSummaryActions(b *strings.Builder, res *assessment, c assessCounts) {
 		return
 	}
 	if c.Sole > 0 {
-		fmt.Fprintf(b, "- Confirm retention and transition plans for the people "+
-			"named under sole holdings; %d subjects have nobody else in the record at all.\n",
+		fmt.Fprintf(b, "- Confirm transition plans for the subjects with only one "+
+			"person on record; %d subjects have nobody else in the record at all.\n",
 			c.Sole)
 	}
 	if c.Quiet > 0 {
-		fmt.Fprintf(b, "- Start with the %d subjects whose lead has already stopped "+
-			"working on them; there the handover has happened without anybody arranging it.\n",
+		fmt.Fprintf(b, "- Start with the %d subjects whose lead on record has no recent "+
+			"activity on them; there the handover may have happened without anybody arranging it.\n",
 			c.Quiet)
 	}
 	if len(ownership.Drift) > 0 {
@@ -301,7 +303,8 @@ func concentrationLine(c assessCounts) string {
 func coveredSpans(spans []resolve.Span) string {
 	for _, s := range spans {
 		if s.Experts > 1 {
-			return " The subjects themselves have other experts; the link between them does not."
+			return " The subjects themselves have other people on record. " +
+				"The link between them does not."
 		}
 	}
 	return ""

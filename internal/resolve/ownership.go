@@ -39,9 +39,9 @@ type OwnerDrift struct {
 
 // How an owner of record stands in relation to the area they own.
 const (
-	standingSilent   = "owner has no recorded work"
-	standingUnworked = "owner works elsewhere, not here"
-	standingTrailing = "owner works here but leads less"
+	standingSilent   = "the record holds no work by the declared owner"
+	standingUnworked = "the record holds work by the declared owner elsewhere, none here"
+	standingTrailing = "the record names someone other than the declared owner"
 )
 
 // ownerStanding says which of the three an area's owners are in. Weight a
@@ -448,7 +448,7 @@ func Ownership(ix *index.Index) OwnershipReport {
 
 // StandingHeld marks an area whose owner of record is also the person doing the
 // work. The other three standings say why an area is not held.
-const StandingHeld = "owner leads their own area"
+const StandingHeld = "the declared owner is the lead on record"
 
 // StandingGroup marks an area owned only by teams or automation, which drift
 // can say nothing about: there is no person to have held it or lost it.

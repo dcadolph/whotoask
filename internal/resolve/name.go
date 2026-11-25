@@ -120,10 +120,10 @@ func nameMatch(ix *index.Index, query string, limit int, ranked ...[]model.Match
 		}
 		reasons := []string{"name"}
 		// Answering "who is this" with only the name is a lookup. Naming what
-		// they are known for turns it into the answer the question was really
+		// they are on record for turns it into the answer the question was really
 		// after, which is what this person can help with.
 		if known := salientTopics(ix, h.person.Topics, 3); len(known) > 0 {
-			reasons = append(reasons, "knows "+strings.Join(known, ", "))
+			reasons = append(reasons, "on record for "+strings.Join(known, ", "))
 		}
 		out = append(out, model.Match{
 			Person: h.person, Team: team,

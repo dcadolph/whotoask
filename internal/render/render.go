@@ -74,10 +74,6 @@ type UnlinkedOwner struct {
 	Owns []string `json:"owns"`
 }
 
-// rank formats a one-based position in a result list, right-aligned so single
-// and double digits line up.
-func rank(n int) string { return fmt.Sprintf("%2d", n) }
-
 // nameWidth returns the column width to pad the names of rows to, capped so one
 // long name does not push every row far to the right.
 func nameWidth[T any](rows []T, name func(T) string) int {
@@ -93,12 +89,14 @@ func nameWidth[T any](rows []T, name func(T) string) int {
 	return width
 }
 
-// RenderAsk prints an answer as ranked, aligned rows: each match numbered, with
-// a strength bar and the reasons it surfaced dimmed beneath. Every indexed
-// string is escaped on its way to the terminal, since names and reasons come
-// from sources third parties control.
+// RenderAsk prints an answer as aligned rows, best match first, with the
+// reasons each surfaced dimmed beneath. People and teams carry no strength bar:
+// their order and their match strength come from different numbers, so a bar
+// could say a row below outmatches the row above it. Every indexed string is
+// escaped on its way to the terminal, since names and reasons come from
+// sources third parties control.
 func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
-	fmt.Fprintf(w, "\n%s\n", s.Bold("Who knows about "+strconv.Quote(query)))
+	fmt.Fprintf(w, "\n%s\n", s.Bold("Who to ask about "+strconv.Quote(query)))
 	if view.Summary != "" {
 		fmt.Fprintf(w, "%s\n", s.Dim(EscapeControls(view.Summary)))
 	}
@@ -118,33 +116,28 @@ func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
 		fmt.Fprintf(w, "  %s\n\n", s.Dim(title))
 	}
 	// The departed close the people list rather than open a section of their
-	// own, so the ranking reads as one list with them at the bottom.
+	// own, so the order reads as one list with them at the bottom.
 	if people := slices.Concat(view.People, view.Departed); len(people) > 0 {
 		section("PEOPLE")
 		width := nameWidth(people, func(p resolve.JSONPerson) string { return p.Name })
-		for i, p := range people {
+		for _, p := range people {
 			name := EscapeControls(p.Name)
 			role := EscapeControls(joinRole(p.Title, p.Team))
 			if p.Deactivated {
 				role = joinRole(role, "deactivated")
 			}
-			fmt.Fprintf(w, "  %s  %s  %s\n",
-				s.Dim(rank(i+1)), pad(s.Bold(name), name, width), s.Dim(role))
-			fmt.Fprintf(w, "      %s %s   %s\n",
-				s.ConfBar(p.Strength), s.Accent(pct(p.Strength)),
-				s.Dim(strings.Join(EscapeControlsList(p.Reasons), " · ")))
+			fmt.Fprintf(w, "  %s  %s\n", pad(s.Bold(name), name, width), s.Dim(role))
+			askReasons(w, p.Reasons, s)
 			fmt.Fprintln(w)
 		}
 	}
 	if len(view.Channels) > 0 {
 		section("CHANNELS")
-		for i, ch := range view.Channels {
-			fmt.Fprintf(w, "  %s  %s\n", s.Dim(rank(i+1)), s.Bold("#"+EscapeControls(ch.Name)))
-			fmt.Fprintf(w, "      %s %s   %s\n",
-				s.ConfBar(ch.Strength), s.Accent(pct(ch.Strength)),
-				s.Dim(strings.Join(EscapeControlsList(ch.Reasons), " · ")))
+		for _, ch := range view.Channels {
+			fmt.Fprintf(w, "  %s\n", s.Bold("#"+EscapeControls(ch.Name)))
+			askReasons(w, ch.Reasons, s)
 			if ch.URL != "" {
-				fmt.Fprintf(w, "      %s %s\n", s.Accent("\u2192"), s.Dim(EscapeControls(ch.URL)))
+				fmt.Fprintf(w, "    %s %s\n", s.Accent("\u2192"), s.Dim(EscapeControls(ch.URL)))
 			}
 			fmt.Fprintln(w)
 		}
@@ -152,19 +145,26 @@ func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
 	if len(view.Teams) > 0 {
 		section("TEAMS (OWNERS OF RECORD)")
 		width := nameWidth(view.Teams, func(t resolve.JSONTeam) string { return t.Name })
-		for i, t := range view.Teams {
+		for _, t := range view.Teams {
 			name := EscapeControls(t.Name)
-			fmt.Fprintf(w, "  %s  %s  %s\n", s.Dim(rank(i+1)), pad(s.Bold(name), name, width),
-				s.Dim(EscapeControls(t.Team)))
-			fmt.Fprintf(w, "      %s %s   %s\n",
-				s.ConfBar(t.Strength), s.Accent(pct(t.Strength)),
-				s.Dim(strings.Join(EscapeControlsList(t.Reasons), " · ")))
+			fmt.Fprintf(w, "  %s  %s\n",
+				pad(s.Bold(name), name, width), s.Dim(EscapeControls(t.Team)))
+			askReasons(w, t.Reasons, s)
 			fmt.Fprintln(w)
 		}
 	}
 }
 
-// RenderNear prints who works near a person as a ranked list, each with the
+// askReasons prints the dimmed reasons line under a person or team row, or
+// nothing when the row matched without one.
+func askReasons(w io.Writer, reasons []string, s Style) {
+	if len(reasons) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "    %s\n", s.Dim(strings.Join(EscapeControlsList(reasons), " · ")))
+}
+
+// RenderNear prints who works near a person, nearest first, each with the
 // shared teams and topics that put them close.
 func RenderNear(w io.Writer, name string, near []index.Adjacent, s Style) {
 	fmt.Fprintf(w, "\n%s\n", s.Bold("Near "+EscapeControls(name)))
@@ -182,11 +182,10 @@ func RenderNear(w io.Writer, name string, near []index.Adjacent, s Style) {
 	if width > 26 {
 		width = 26
 	}
-	for i, a := range near {
+	for _, a := range near {
 		aName := EscapeControls(a.Name)
-		fmt.Fprintf(w, "  %s  %s  %s\n",
-			s.Dim(rank(i+1)), pad(s.Bold(aName), aName, width),
-			s.Dim(strings.Join(EscapeControlsList(a.Reasons), " · ")))
+		fmt.Fprintf(w, "  %s  %s\n",
+			pad(s.Bold(aName), aName, width), s.Dim(strings.Join(EscapeControlsList(a.Reasons), " · ")))
 	}
 	fmt.Fprintln(w)
 }
@@ -568,8 +567,9 @@ func handleSource(id string) string {
 	return ""
 }
 
-// RenderSearch prints ranked search results: people in bold, channels prefixed
-// with a hash, each with a context line and the fields the query matched.
+// RenderSearch prints search results, most direct match first: people in bold,
+// channels prefixed with a hash, each with a context line and the fields the
+// query matched.
 func RenderSearch(w io.Writer, query string, results []resolve.SearchResult, s Style) {
 	if len(results) == 0 {
 		fmt.Fprintln(w, s.Dim(
@@ -578,15 +578,14 @@ func RenderSearch(w io.Writer, query string, results []resolve.SearchResult, s S
 	}
 	fmt.Fprintln(w, s.Bold(fmt.Sprintf("%d result%s for “%s”", len(results), Plural(len(results)), query)))
 	width := searchNameWidth(results)
-	for i, r := range results {
+	for _, r := range results {
 		name := EscapeControls(r.Name)
 		raw, label := name, s.Bold(name)
 		if r.Kind == "channel" {
 			raw = "#" + name
 			label = s.Color256(197, raw)
 		}
-		fmt.Fprintf(w, "  %s  %s  %s",
-			s.Dim(rank(i+1)), pad(label, raw, width), s.Dim(EscapeControls(searchContext(r))))
+		fmt.Fprintf(w, "  %s  %s", pad(label, raw, width), s.Dim(EscapeControls(searchContext(r))))
 		if len(r.Matched) > 0 {
 			fmt.Fprintf(w, "  %s", s.Dim("· "+strings.Join(EscapeControlsList(r.Matched), ", ")))
 		}
@@ -636,10 +635,11 @@ func searchNameWidth(results []resolve.SearchResult) int {
 func Plural(n int) string { return Plural2(n, "", "s") }
 
 // RenderRisk prints the knowledge-concentration report, most at-risk first, with
-// each topic's bus factor and the people who hold it.
+// each topic's bus factor and the people on record for it.
 func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
 	if len(topics) == 0 {
-		fmt.Fprintln(w, s.Dim("No topics scored yet. Index a source with expertise signal first."))
+		fmt.Fprintln(w, s.Dim(
+			"No topics scored yet. Index a source that records work on subjects first."))
 		return
 	}
 	crit, gone := 0, 0
@@ -647,16 +647,16 @@ func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
 		if t.Level == "critical" {
 			crit++
 		}
-		// A subject resting on somebody who has already stopped working on it
-		// is the sharpest thing in this report, and counting it in the headline
-		// is the difference between a reader noticing and not.
-		if len(t.Experts) > 0 && t.Experts[0].Quiet {
+		// A subject whose lead on record has stopped working on it is the
+		// sharpest thing in this report, and counting it in the headline is the
+		// difference between a reader noticing and not.
+		if t.LeadQuiet() {
 			gone++
 		}
 	}
 	head := fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(topics), crit)
 	if gone > 0 {
-		head += fmt.Sprintf(", %d whose strongest expert has moved on", gone)
+		head += fmt.Sprintf(", %d whose lead on record has no recent activity on it", gone)
 	}
 	fmt.Fprintln(w, s.Bold(head))
 	width := riskTopicWidth(topics)
@@ -676,8 +676,11 @@ func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
 			// Whether the person holding a subject is still in it changes what
 			// the finding means, so it is said on the same line as their share.
 			note := ""
-			if e.Quiet {
-				note = s.Dim("  not lately")
+			switch {
+			case e.Deactivated:
+				note = s.Dim("  deactivated")
+			case e.Quiet:
+				note = s.Dim("  no recent activity on record")
 			}
 			fmt.Fprintf(w, "      %s %s%s\n", pct(e.Share), s.Dim(EscapeControls(e.Name)), note)
 		}
@@ -710,7 +713,8 @@ func riskTopicWidth(topics []resolve.TopicRisk) int {
 	return w
 }
 
-// RenderDeparture prints the knowledge that would leave with a person.
+// RenderDeparture prints the subjects a person is the lead on record for, which
+// is what a team would pick up if they were out.
 func RenderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s Style) {
 	if imp.Person == "" {
 		fmt.Fprintln(w, s.Dim("No one matches “"+query+"”."))
@@ -720,33 +724,35 @@ func RenderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s S
 	if name == "" {
 		name = imp.Person
 	}
-	fmt.Fprintln(w, s.Bold("If "+EscapeControls(name)+" leaves"))
+	name = EscapeControls(name)
+	fmt.Fprintln(w, s.Bold("If "+name+" is out"))
 	if len(imp.Sole) == 0 && len(imp.Top) == 0 && len(imp.Regions) == 0 {
-		fmt.Fprintln(w, s.Dim("  No topic depends on them as the top expert."))
+		fmt.Fprintln(w, s.Dim("  "+name+" is not the lead on record for any subject."))
 		return
 	}
 	// The joined work goes first because it is the heaviest thing they take
 	// with them: a region has to be picked up whole, not a subject at a time.
 	for _, r := range imp.Regions {
 		fmt.Fprintf(w, "\n  %s\n", s.Bad(fmt.Sprintf(
-			"A joined body of work goes with them (%d subjects)", r.Size())))
+			"Lead on record for a joined body of work (%d subjects)", r.Size())))
 		fmt.Fprintf(w, "    %s\n", strings.Join(EscapeControlsList(r.Topics), ", "))
 	}
 	if len(imp.Sole) > 0 {
-		fmt.Fprintf(w, "\n  %s\n", s.Bad(fmt.Sprintf("Sole expert, nobody else knows (%d)", len(imp.Sole))))
+		fmt.Fprintf(w, "\n  %s\n", s.Bad(fmt.Sprintf("Only person on record (%d)", len(imp.Sole))))
 		for _, t := range imp.Sole {
 			fmt.Fprintf(w, "    %s %s\n", s.Bad("•"), EscapeControls(t))
 		}
 	}
 	if len(imp.Top) > 0 {
-		fmt.Fprintf(w, "\n  %s\n", s.Warn(fmt.Sprintf("Strongest expert, others remain (%d)", len(imp.Top))))
+		fmt.Fprintf(w, "\n  %s\n", s.Warn(fmt.Sprintf(
+			"%s is the lead on record, others also on record (%d)", name, len(imp.Top))))
 		for _, t := range imp.Top {
 			fmt.Fprintf(w, "    %s %s\n", s.Warn("•"), EscapeControls(t))
 		}
 	}
 }
 
-// RenderRelated prints the topics that share a topic's experts.
+// RenderRelated prints the topics that share people on record with a topic.
 func RenderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s Style) {
 	if len(rel) == 0 {
 		fmt.Fprintln(w, s.Dim(
@@ -816,7 +822,7 @@ func RenderSpans(w io.Writer, spans []resolve.Span, s Style) {
 		"One-person connections  %d %s only one person has done focused work across",
 		len(spans), Plural2(len(spans), "crossing", "crossings"))))
 	fmt.Fprintf(w, "  %s\n\n", s.Dim(
-		"The subjects have their own experts. The links between them do not."))
+		"The subjects have other people on record. The links between them do not."))
 	for _, sp := range spans {
 		// Two subjects is one crossing and reads as a pair. More than two means
 		// the crossings join up and the whole group rests on one person, which
@@ -922,24 +928,27 @@ func RenderOwnership(w io.Writer, report resolve.OwnershipReport, s Style) {
 	}
 	if len(drift) == 0 {
 		fmt.Fprintln(w, s.Dim(fmt.Sprintf(
-			"All %d declared area%s is led by its owner of record.", report.Declared, Plural(report.Declared))))
+			"The declared owner is the lead on record in all %d declared area%s.",
+			report.Declared, Plural(report.Declared))))
 		return
 	}
 	// The share is the finding. A list on its own reads as a handful of
 	// exceptions, and it never is one.
 	fmt.Fprintln(w, s.Bold(fmt.Sprintf(
-		"Ownership drift  %d of %d judged areas (%.0f%%) are not led by their owner of record",
+		"Ownership drift  %d of %d judged areas (%.0f%%) have a lead on record "+
+			"other than the declared owner",
 		len(drift), report.Declared-report.GroupOwned, 100*report.Share())))
 	if report.GroupOwned > 0 {
 		fmt.Fprintf(w, "  %s\n", s.Dim(fmt.Sprintf(
 			"%d more area%s owned only by teams or automation, which drift cannot judge",
 			report.GroupOwned, Plural(report.GroupOwned))))
 	}
-	// The three are different problems: somebody who has left, somebody who
-	// owns an area on paper only, and somebody merely out-worked in their own
-	// area. Only the last is a judgement call.
+	// The three are different problems: a declaration the record holds no work
+	// behind at all, one held on paper only, and one where the record names
+	// somebody else as lead. Only the last is a judgment call.
 	fmt.Fprintf(w, "  %s\n\n", s.Dim(fmt.Sprintf(
-		"%d with no recorded work at all, %d who work elsewhere but never here, %d out-worked in their own area",
+		"%d with no work on record by the declared owner, %d with their work on record elsewhere only, "+
+			"%d where the record names someone other than the declared owner",
 		report.Silent, report.Unworked, report.Trailing)))
 	width := 0
 	for _, d := range drift {
@@ -955,7 +964,7 @@ func RenderOwnership(w io.Writer, report resolve.OwnershipReport, s Style) {
 		fmt.Fprintf(w, "  %s  %s %s  %s %s\n",
 			pad(s.Bold(topic), topic, width),
 			s.Dim("declared"), s.Warn(strings.Join(EscapeControlsList(d.Declared), ", ")),
-			s.Dim("→ actual"), s.Accent(EscapeControls(d.Actual)))
+			s.Dim("→ lead on record"), s.Accent(EscapeControls(d.Actual)))
 	}
 }
 
@@ -978,9 +987,11 @@ func RenderEval(w io.Writer, r eval.Result, s Style) {
 			"Agreement  %.1f%%   %d of %d declared areas, counting owners who never appear in what was indexed",
 			100*r.Agreement, r.Held, r.Declared)))
 		// The three buckets are three different problems, and only the last is
-		// a judgement call about ranking.
+		// a judgment call about ranking.
 		fmt.Fprintf(w, "  %s\n", s.Dim(fmt.Sprintf(
-			"of the %d that disagree: %d have no recorded work at all, %d work elsewhere but never here, %d are out-worked in their own area",
+			"of the %d that disagree: %d with no work on record by the declared owner, "+
+				"%d with their work on record elsewhere only, "+
+				"%d where the record names someone other than the declared owner",
 			r.Declared-r.Held, r.Silent, r.Unworked, r.Trailing)))
 	}
 

@@ -126,7 +126,7 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 	f.StringVar(&cfg.openaiURL, "openai-url", "",
 		"OpenAI-compatible base URL, e.g. a local LM Studio or vLLM server.")
 	f.StringVar(&cfg.fbStrength, "feedback", "normal",
-		"How hard votes move ranking: off, low, normal, or high.")
+		"How hard votes move the order: off, low, normal, or high.")
 }
 
 // recallFn returns the web recall handler, or nil when recall is unavailable.
@@ -494,7 +494,7 @@ func modeReadiness(
 // demoModeHints rewrites the hints a public demo shows for the modes it does not
 // run. The local hints tell the reader to install Ollama, rebuild the index, or
 // restart the server, which is advice a visitor cannot act on and which makes a
-// deliberate choice read as a broken feature. What is true is better: ranking is
+// deliberate choice read as a broken feature. What is true is better: the order is
 // deterministic and needs no model, a model is an upgrade you host yourself, and
 // a public server must never hold a provider key.
 func demoModeHints(r web.ModesReport) web.ModesReport {
@@ -502,7 +502,7 @@ func demoModeHints(r web.ModesReport) web.ModesReport {
 		semanticHint = "Matches by meaning, so \"failed payments\" can find \"billing retries\". " +
 			"It runs on an embedding model you host yourself, so this public demo stays keyword only. " +
 			"Every answer you see here is deterministic, with no model involved."
-		modelHint = "WhoToAsk ranks deterministically and explains every answer, so a model is an " +
+		modelHint = "WhoToAsk sets the order deterministically with no model, so a model is an " +
 			"upgrade rather than a requirement. Run whotoask yourself to point it at a local model, " +
 			"or at Claude, ChatGPT, or Gemini under a policy you set."
 		cloudHint = " This public demo carries no provider key on purpose: a shared server holding " +
@@ -537,8 +537,8 @@ func ollamaReadiness(ctx context.Context, cfg webConfig) web.ModeInfo {
 	if ollamaUp(ctx, cfg.ollamaURL) {
 		return web.ModeInfo{
 			Ready: true,
-			Hint: "A model on this machine (" + model + ") picks the best matches and writes " +
-				"a recommendation. Nothing leaves your computer.",
+			Hint: "A model on this machine (" + model + ") sets the order of the matches. " +
+				"The summary is still written locally, and nothing leaves your computer.",
 		}
 	}
 	return web.ModeInfo{
@@ -565,8 +565,8 @@ func cloudReadiness(pol policy.Policy, name, keyEnv string) web.ModeInfo {
 	}
 	return web.ModeInfo{
 		Ready: true,
-		Hint: name + " picks the best matches and writes a recommendation, under the " +
-			pol.Mode().String() + " policy.",
+		Hint: name + " sets the order of the matches under the " + pol.Mode().String() +
+			" policy. The summary is still written locally.",
 	}
 }
 

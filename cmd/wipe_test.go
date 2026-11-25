@@ -226,7 +226,7 @@ func TestFindingsCarryNotForLine(t *testing.T) {
 			if test.Stderr {
 				got = stderr
 			}
-			if diff := cmp.Diff(test.WantCount, strings.Count(string(got), "performance or employment")); diff != "" {
+			if diff := cmp.Diff(test.WantCount, strings.Count(string(got), "performance reviews, layoffs")); diff != "" {
 				t.Errorf("not-for count mismatch (-want +got):\n%s\n%s", diff, got)
 			}
 		})

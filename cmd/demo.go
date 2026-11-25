@@ -66,7 +66,7 @@ log, which is the point of running it on your own code rather than on a sample.
   whotoask demo --repo .
 
 With no --repo it builds a simulated company instead. The simulation covers
-all eight sources, so identity joins, recency, confidence, and feedback all
+all eight sources, so identity joins, recency, match strength, and feedback all
 behave as they would on real data, but nobody can check it against anything.
 
 Either way nothing is fetched from the network and no credentials are needed.
