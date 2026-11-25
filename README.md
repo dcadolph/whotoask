@@ -17,21 +17,24 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" width="100%" alt="whotoask ask answering who knows about payments retry and kafka consumer lag, with people, channels, match strength, and reasons">
+  <img src="docs/demo.gif" width="100%" alt="whotoask ask answering who to ask about payments retry and kafka consumer lag, with people, channels, and reasons">
 </p>
 
-Ask a question about your work. WhoToAsk tells you who on your team knows the answer, why, and
-which channel to post it in. It also shows where only one person knows how something works, and
-when the person who fixed something has moved on, it finds the conversation where they fixed it.
+Ask a question about your work. WhoToAsk lists the people on your team whose record matches it,
+best match first, with the reasons it found and the channels to ask in. It also shows where a
+subject has only one person on record, and when the person who fixed something has moved on, it
+finds the conversation where they fixed it.
 
 It runs on your machine, with or without an AI model.
 
 ## What this is not for
 
-WhoToAsk describes where knowledge and systems are at risk. It never ranks, scores, or labels
-people, and its findings must not be used for performance reviews, layoffs, or any other
-employment decision. A person who shows up as the only one who knows something is a sign the
-team needs another person to know it.
+WhoToAsk reads the record your team's tools keep. For a question, it lists the people and
+channels whose record matches, best match first. For a subject, it shows how that record is split
+among people. Both describe the record, not the person. A weak or missing match is not evidence
+about anyone, because work done in meetings, in pairing, or in tools WhoToAsk does not read leaves
+no record. Its findings must not be used for performance reviews, layoffs, or any other employment
+decision. A subject with one person on record is a sign the team needs a second person on it.
 
 ## Install
 
@@ -67,26 +70,29 @@ second line.
 
 ## Quickstart
 
-Start with a repository you already have. WhoToAsk reads its git history and opens on what it
-found: the directories the work rests on, and which of them rest on one person. Nothing is
-fetched and no credentials are needed.
+Start with a repository you already have. Index its git history, then ask. Nothing is fetched
+and no credentials are needed.
 
-    whotoask demo --repo .
+    whotoask index --source git --repo-path .
+    whotoask ask "who do I talk to about billing retries"
 
 Every name it gives you can be checked against the same history:
 
     git log --format='%an' -- path/it/named | sort | uniq -c | sort -rn
 
-Without `--repo`, the demo builds a simulated company across every source, which shows what a
-git-only run cannot, and the sidebar has a two-minute guided tour.
+To look around on sample data first, `whotoask demo` serves the web UI over a simulated company
+across every source, which shows what a git-only run cannot, and the sidebar has a two-minute
+guided tour. `whotoask demo --repo .` serves the same view over your own repository. Either demo
+works in a temporary directory and leaves no index behind.
 
-Then index an org chart and ask. The example chart lives in this repository, so fetch it first:
+Then merge an org chart onto the index. The example chart lives in this repository, so fetch it
+first:
 
     curl -sLO https://raw.githubusercontent.com/dcadolph/whotoask/main/examples/people.csv
-    whotoask index --source org-csv --file people.csv
-    whotoask ask --pretty "who do I talk to about billing retries"
+    whotoask index --source org-csv --file people.csv --merge
+    whotoask ask "who do I talk to about billing retries"
 
-When the person who knew has left, ask what happened instead of who to ask. `recall` finds the
+When the person on record has left, ask what happened instead of who to ask. `recall` finds the
 conversation where something was worked out and answers with a pointer: the people, the place,
 the date, and a link back to the tool it happened in. It covers conversations you took part in,
 so it needs to know who you are, from `--me`, `WHOTOASK_ME`, or your git email:
@@ -118,15 +124,19 @@ Every source feeds one graph of people, teams, topics, and channels. One human s
 sources join by email, GitHub noreply logins fold in on their own, measured rules link handles
 and second mailboxes, and an alias file covers the rest.
 
-## Asking and ranking
+## How answers are ordered
 
 Explicit signals such as ownership files and on-call rotations stay strong, while repetition
-saturates, so the person who owns a thing outranks the person who talks about it most. Recent
-work counts for more. Every answer carries its match strength and says which words matched
-where. Confirm or correct an answer and later rankings move with it.
+saturates, so the person who owns a thing is listed above the person who talks about it most.
+People active recently count for more. Results come best match first, and a row says which words
+matched where when it can. People rows show no percent or bar, because the order and the match
+strength come from different numbers. `--json` keeps the numeric `strength`. Confirm or correct
+an answer and later answers to that question move with it, marked "moved by votes on this
+question".
 
-Keyword answers need no model and always work. Semantic search and written answers run on a
-local Ollama model, or on Claude, Gemini, or OpenAI once you opt in. The CLI, the local web UI,
+Keyword answers need no model and always work. Semantic search runs on a local Ollama model, and
+so does `--mode llm`, where a model sets the order and WhoToAsk writes the summary locally from
+it. Either can use Claude, Gemini, or OpenAI once you opt in. The CLI, the local web UI,
 a Slack bot, and an MCP server for coding agents all share one engine.
 
 ## Sealing a finding

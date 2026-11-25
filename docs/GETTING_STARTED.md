@@ -10,11 +10,12 @@ fuller walkthrough with the concepts behind it.
 
 ## What WhoToAsk does
 
-You give WhoToAsk your work data (an org chart, a Slack workspace) and it builds a
-local, searchable map of who knows what and which channel to ask in. You then
-ask a plain-language question and get a ranked list of people and channels, with
-a short reason for each. It works without any model. If you have a local model
-through Ollama, it can also write a one-line recommendation.
+You give WhoToAsk your work data (a git repository, an org chart, a Slack
+workspace) and it builds a local, searchable record of who has worked on what and
+which channel to ask in. You then ask a plain-language question and get the
+people and channels whose record matches, best match first, with the reasons it
+found. It works without any model. With a local model through Ollama, LLM mode
+lets the model set the order.
 
 Everything stays on your machine by default. Nothing is uploaded unless you
 explicitly change the policy.
@@ -69,38 +70,41 @@ archive was built by that workflow. On macOS without GNU coreutils, use
 
 ## Try it in sixty seconds
 
-The fastest look is the demo, run against a repository you already have:
+Start with a repository you already have. Index its git history, then ask:
 
-    whotoask demo --repo .
+    whotoask index --source git --repo-path .
+    whotoask ask "who do I talk to about billing retries"
 
-It reads that repository's git history and opens on the exposure view: each
-directory with enough work to claim about, the people that work rests on, and
-the ones where a single person covers most of it. Nothing is fetched from the
-network and nothing is written outside a temporary directory.
-
-Check any row it gives you against the history it was counted from:
+Nothing is fetched from the network and no credentials are needed. The answer
+opens with `Who to ask about "..."` and lists the people whose record matches,
+best match first. A person row shows the reasons it matched where there are
+any, and no percent, bar, or numeral. Check any name it gives you against the
+history it was counted from:
 
     git log --format='%an' -- path/it/named | sort | uniq -c | sort -rn
 
 That is the point of running it on your own code. A simulated company can show
 more sources, but you cannot check it against anything.
 
-If you would rather see those other sources, leave `--repo` off:
+The repository also ships a small example org chart. Merge it onto the index
+and ask again, and reasons such as "retries (topic)" or "billing (team)" appear:
+
+    whotoask index --source org-csv --file examples/people.csv --merge
+    whotoask ask "who do I talk to about billing retries"
+
+That is the whole loop: index a source, then ask.
+
+To look around the web UI on sample data, run the demo:
 
     whotoask demo
 
 That builds a simulated company across all eight sources and opens on an
 answered question. Click a name for details, try "who owns terraform", vote on
-a result. Sample data only; it is discarded when the demo stops.
-
-For the command-line loop, the repository ships a small example org chart:
-
-    whotoask index --source org-csv --file examples/people.csv
-    whotoask ask --pretty "who do I talk to about billing retries"
-
-You should see a ranked list of people, each with a score and the reason it
-matched, such as "retries (topic)" or "billing (team)". That is the whole loop:
-index a source, then ask.
+a result. `whotoask demo --repo .` serves the same view over your own
+repository instead and opens on the exposure view: each directory with enough
+work to claim about, the people on record for it, and the ones where a single
+person covers most of it. Either demo works in a temporary directory, which is
+discarded when it stops, so it leaves no index behind.
 
 Adding the rest of your tools is the same loop. For a guided setup that validates
 the credential and runs the first index, run `whotoask connect`; the sections below
@@ -200,29 +204,31 @@ JSON, `--json` to force JSON at a terminal, or `--human` to force the readable
 form through a pipe. Useful flags:
 
 - `--limit N` caps results per section (default 5).
-- `--mode keyword` (default) ranks with no model.
-- `--mode llm` adds a local model. See the next section.
+- `--mode keyword` (default) orders results with no model.
+- `--mode llm` lets a local model set the order. See the LLM mode section.
 
 The answer has two sections. People are who to talk to. Channels are where to
 ask, each with its most active members for that topic.
 
-Each keyword-mode result carries a `strength` from zero to one: how much of
-the question matched, scaled by how strong the match is. It is deterministic
-scoring, not a probability, which is why it is not called a confidence. An explicit topic
-counts as proof, a job title slightly less, a passing mention in chat half.
-The web UI and the Slack bot show it as strong, moderate, or weak, so a
-least-bad answer never dresses up as a sure one.
+Each keyword-mode result carries a `strength` from zero to one in JSON: how
+much of the question matched, scaled by how strong the match is. It is
+deterministic arithmetic, not a probability, which is why it is called match
+strength and not confidence. An explicit topic counts most, a job title slightly
+less, a passing mention in chat half. The strength does not set the order, so
+the second row can carry a higher strength than the first. For that reason no
+person row in the terminal, the web UI, the Mac app, or the Slack bot shows a
+strength label, percent, or bar. The order and the reasons are what you read.
 
 ## Confirm or correct answers
 
-When an answer is right, say so; when it is wrong, say that too. Votes adjust
-future rankings for that question and its close variants:
+When an answer is right, say so. When it is wrong, say that too. Votes move
+the order of later answers to that question and its close variants:
 
     whotoask feedback record "billing retries" --person alice@example.com --helpful
     whotoask feedback record "billing retries" --channel payments --not-helpful \
       --comment "bot answers there now"
 
-Review or undo what has been taught, and tune how hard votes move ranking:
+Review or undo what has been taught, and tune how hard votes move the order:
 
     whotoask feedback list --pretty
     whotoask feedback clear --person alice@example.com
@@ -230,15 +236,17 @@ Review or undo what has been taught, and tune how hard votes move ranking:
 
 The web UI has the same buttons on every result. Votes live in
 `feedback.json` next to the index, separate on purpose: re-indexing rebuilds
-the graph but keeps what people taught it. Boosted or lowered results say so
-in their reasons, and a few votes adjust ranking without ever burying the
-underlying evidence.
+the graph but keeps what people taught it. A person row whose place votes
+changed says "moved by votes on this question", a channel says so in its
+reasons, and a few votes adjust the order without ever burying the underlying
+evidence.
 
 ## LLM mode
 
-LLM mode retrieves candidates with the index, then asks a local model to rank
-them and write a short recommendation. The model only ever sees the retrieved
-candidates, so it cannot invent a person or a channel.
+LLM mode retrieves candidates with the index, then lets a local model set
+their order. WhoToAsk writes the one-line summary itself from that order, so the
+summary never names anyone outside the candidates, and the model only ever sees
+the retrieved candidates, so it cannot invent a person or a channel.
 
 1. Install Ollama from https://ollama.com and start it.
 2. Pull a model:
@@ -303,9 +311,9 @@ shared word. It uses a local embedding model through Ollama.
        whotoask ask --mode semantic "who handles failed payments"
        whotoask ask --mode llm "who handles failed payments"
 
-Embeddings are stored in the index. The semantic mode ranks by them directly,
-and the llm mode uses them to retrieve candidates before the model ranks and
-summarizes. Set the model with --embed-model. The embedder runs locally, so it
+Embeddings are stored in the index. The semantic mode orders by them directly,
+and the llm mode uses them to retrieve candidates before the model sets the
+order. Set the model with --embed-model. The embedder runs locally, so it
 is allowed under the strict policy.
 
 ## Web UI
@@ -368,12 +376,12 @@ For Claude Desktop, add this under `mcpServers` in
 
     {"whotoask": {"command": "whotoask", "args": ["mcp"]}}
 
-The agent gets four tools: `whotoask_ask` (ranked people and channels with
-reasons and match strength, keyword or semantic), `whotoask_recall` (the past
-conversations one person took part in), `whotoask_person` (a full profile),
+The agent gets four tools: `whotoask_ask` (people and channels, best match
+first, with reasons and match strength, keyword or semantic), `whotoask_recall`
+(the past conversations one person took part in), `whotoask_person` (a full profile),
 and `whotoask_directory` (browse people, channels, teams, or topics). There is no
 llm mode over MCP on purpose: the calling agent is already a model, so it reads
-the ranked candidates itself.
+the ordered candidates itself.
 
 One thing to be clear-eyed about: answers flow to whichever agent you wire
 this into, and on to that agent's model. Registering the server is the
@@ -485,7 +493,7 @@ with no CODEOWNERS file.
     whotoask index --source git --repo-path ~/src/billing --repo-path ~/src/infra --merge
 
 Each author gets the topics of the paths they touch, weighted by how often
-they touch them, so the person doing the work outranks a drive-by. Authors
+they touch them, so the person doing the work is listed above a drive-by. Authors
 join other sources by commit email. Bot accounts such as dependabot are
 skipped. `--git-since-days` bounds the window (default 365) and
 `--max-commits` caps each repository (default 2000).
@@ -537,7 +545,7 @@ Start with the org chart, then merge every other source onto it:
     whotoask index --source jira --jira-project PROJ --merge
     whotoask index --source confluence --confluence-space ENG --merge
     whotoask index --source pagerduty --merge
-    whotoask ask "who knows the billing service"
+    whotoask ask "who do I talk to about the billing service"
 
 Each run prints what joined and left since the last index, for example
 "+3 people, -1 people, +1 channels". Add `--changes-file changes.json` to write
@@ -644,9 +652,10 @@ non-zero. To prove the seal came from your install, publish the output of
 - `whotoask index --source pagerduty` indexes PagerDuty services and on-call.
 - `whotoask index --source git --repo-path DIR [--git-since-days N] [--max-commits N]`
   indexes local git history.
-- `whotoask demo --repo .` runs the web UI over a repository you already have and
-  opens on what rests on one person; without `--repo` it explores a simulated
-  company across all eight sources. Either way, no credentials.
+- `whotoask demo` explores a simulated company across all eight sources in the
+  web UI. `whotoask demo --repo .` serves the same view over a repository you
+  already have and opens on the subjects with one person on record. Either way,
+  no credentials, and no index is left behind.
 - `whotoask connect [source]` walks through setting up a source's credentials, and
   `whotoask connect --status` reports what is configured.
 - `whotoask index ... --merge` adds the source to the existing index instead of replacing it.

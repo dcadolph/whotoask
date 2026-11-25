@@ -221,24 +221,30 @@ Answers a question from the index.
 | `--embed-model` |           | Ollama embed model for semantic and llm modes.      |
 | `--ollama-url`  | localhost | Ollama base URL.                                    |
 | `--openai-url`  |           | OpenAI-compatible base URL including the version path, e.g. `http://localhost:1234/v1`. |
-| `--feedback`    | `normal`  | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
+| `--feedback`    | `normal`  | How hard votes move the order: `off`, `low`, `normal`, `high`. |
 
-Modes: `keyword` needs no model and always works. `semantic` blends meaning
-with your exact words, using embeddings built with `index --embed`, so a
-paraphrase can find what the words alone would miss without losing the
-matches the words already had. `llm` retrieves
-candidates, then a model re-ranks them and writes a short recommendation; it
-cannot invent people. The default provider is a local Ollama server. The
-`anthropic` (Claude), `openai`, and `gemini` providers are cloud models gated
-by the egress policy: strict refuses them, `--policy redacted` sends the question and
+Modes: `keyword` needs no model and always works. `semantic` blends meaning with
+your exact words, using embeddings built with `index --embed`, so a paraphrase
+can find what the words alone would miss without losing the matches the words
+already had. `llm` retrieves candidates, then lets a model set their order.
+WhoToAsk writes the short summary locally from that order, and the model cannot
+invent people. The default provider is a local Ollama server. The `anthropic`
+(Claude), `openai`, and `gemini` providers are cloud models gated by the egress
+policy: strict refuses them, `--policy redacted` sends the question and
 anonymized numbered candidates (people as title, team, and matched terms;
 channels as matched terms only) and writes the summary locally, and
-`--policy open` sends candidates as-is. The `openai` provider
-also speaks to any compatible server via `--openai-url`; a local one, such as
-LM Studio, needs no policy opt-in, while a remote one needs `--policy open`.
-Each result carries a `strength`
-from zero to one: query coverage scaled by the weight of the evidence, where an
-explicit topic is proof, a title slightly less, a passing mention half.
+`--policy open` sends candidates as-is. The `openai` provider also speaks to any
+compatible server via `--openai-url`; a local one, such as LM Studio, needs no
+policy opt-in, while a remote one needs `--policy open`.
+
+The answer opens with `Who to ask about "QUESTION"` and lists people and
+channels best match first. People rows carry no numeral, percent, or bar, and
+show reasons where the match has any. A person whose place votes changed says
+"moved by votes on this question". In JSON each result carries a `strength` from
+zero to one: query coverage scaled by the weight of the evidence, where an
+explicit topic counts most, a title slightly less, a passing mention half. The
+strength does not set the order, so a later row can carry a higher strength than
+an earlier one, which is why no person row shows it.
 
 ## whotoask recall
 
@@ -274,20 +280,21 @@ gates the server, not one person's history.
 
     whotoask near PERSON [--limit N]
 
-Rank the people who work nearest PERSON by shared team and channel membership and
-shared topics. Co-membership is normalized by group size, so a small tight team
-counts for far more than a broad channel; groups that span most of the org are
-ignored as administrative; and permission tiers of one group (store-admin,
-store-write) fold together. PERSON is an email, an id, or an exact name.
+List the people who work nearest PERSON, nearest first, by shared team and
+channel membership and shared topics. Co-membership is normalized by group size,
+so a small tight team counts for far more than a broad channel; groups that span
+most of the org are ignored as administrative; and permission tiers of one group
+(store-admin, store-write) fold together. PERSON is an email, an id, or an exact
+name.
 
 ## whotoask search
 
     whotoask search QUERY [--limit N]
 
 Find people and channels whose name, email, title, team, or topic contains
-QUERY, ranked by how directly they match. This is a direct lookup, so use it
-when you know what you are looking for; use `ask` when you want the people who
-know a subject ranked by expertise.
+QUERY, ordered by how directly they match. This is a direct lookup, so use it
+when you know what you are looking for. Use `ask` when you want the people whose
+record matches a subject, best match first.
 
 ## whotoask related
 
@@ -309,7 +316,7 @@ How much each one contributes depends on whether the people using it say what
 their work is about. Measured on public instances: an issue tracker where four
 in five tickets carry two or more labels or components produces a dense graph,
 and a wiki where almost nothing is labeled produces none at all, while still
-answering perfectly well about who knows what. Nothing is wrong in the second
+answering perfectly well about who to ask. Nothing is wrong in the second
 case. Connections need stated subjects, and a source only has them if somebody
 stated them.
 
@@ -326,7 +333,7 @@ done to a piece of work rather than what it is about, such as the ones GitHub
 creates in every new repository, are listed and excluded outright: no shape in
 the graph tells them from a real area, and four different structural measures
 were tried before the list was written. Only connections are affected, so
-somebody can still be the person who knows the documentation.
+somebody can still be the person on record for the documentation.
 
 A subject that turns up in more than half of a source's containers, its
 projects, its repositories, or its wiki spaces, is dropped too. Meaning the same
@@ -350,11 +357,11 @@ ticket with a patch is carried by a sixth of the contributors, nowhere near the
 share of people that marks scaffolding, while being tied to seventy per cent of
 every subject there.
 
-The weaker is shared experts: a subject held by the same people is likely the
-same body of knowledge, and one held by fewer of them is a specialty within it.
-It fills in where nothing has been seen worked on together, which is often,
-since most work touches a single area. Read it knowing that any subject one
-person holds overlaps perfectly with everything else they hold.
+The weaker is shared people on record: a subject held by the same people is
+likely the same body of knowledge, and one held by fewer of them is a specialty
+within it. It fills in where nothing has been seen worked on together, which is
+often, since most work touches a single area. Read it knowing that any subject
+one person holds overlaps perfectly with everything else they hold.
 
 Neither needs a taxonomy anyone had to write, and neither needs a model.
 
@@ -362,9 +369,9 @@ Neither needs a taxonomy anyone had to write, and neither needs a model.
 
     whotoask risk [PERSON] [--limit N] [--html PATH]
 
-Score knowledge concentration across the graph: the subjects where one or two
-people hold most of the expertise, so a single departure is visible before it
-hurts. Name a person for the offboarding view instead: what the record shows only them in.
+Measure how the record of each subject is split among people: the subjects
+where one or two people hold most of the record, so a single departure is visible
+before it hurts. Name a person for the offboarding view instead: what the record shows only them in.
 
 `--html` writes a self-contained knowledge-risk brief to PATH rather than
 printing. The file needs no network, no server, and no whotoask to open, so it can
@@ -384,17 +391,17 @@ set by eye cuts the real connections along with the noise, since how much of the
 time two subjects move as one is a tiny number whenever both are also worked on
 alone. Without it the report fills with true and worthless findings, of the form
 that one person is the only one who ever touched both documentation and
-Kubernetes. Both subjects have their own experts, so nothing that
-counts experts per subject can show this. What rests on one person there is not
+Kubernetes. Both subjects have other people on record, so nothing that
+counts people on record per subject can show this. What rests on one person there is not
 either subject but the knowledge that the two belong together, and whoever picks
 one up after they leave has no reason to look at the other.
 
 It also reports joined work: connected bodies of subjects that get worked on
-together where the same person leads every one. That is a heavier finding than a
-concentrated subject on its own, and a per-subject list cannot show it. Ten
-unrelated subjects held by one person are ten small risks; ten that move
-together and rest on the same person are one large one, because whoever takes
-the work over has to learn the whole of it at once.
+together where the same person is the lead on record for every one. That is a
+heavier finding than a concentrated subject on its own, and a per-subject list
+cannot show it. Ten unrelated subjects held by one person are ten small risks;
+ten that move together and rest on the same person are one large one, because
+whoever takes the work over has to learn the whole of it at once.
 
 Deterministic arithmetic over the graph, no model needed.
 
@@ -403,15 +410,17 @@ Deterministic arithmetic over the graph, no model needed.
     whotoask ownership
 
 Compare declared ownership, from a source of record such as CODEOWNERS, against
-who actually has the expertise. A mismatch is ownership drift: the file says one
-person or team owns an area, but the work and the knowledge sit somewhere else.
+who the record shows doing the work. A mismatch is ownership drift: the file says
+one person or team owns an area, but the record names someone other than the
+declared owner.
 
 The drifted areas are split three ways, because they are three different
 problems: an owner with no recorded work at all, an owner who is active
 elsewhere but has never worked in the area they own, and an owner who does work
-there but less than whoever now leads. Only the last is a judgment call. Weight
-that a source of record assigned does not count as work, or indexing a
-CODEOWNERS file would make every owner look active in everything they own.
+there but less than whoever is now the lead on record. Only the last is a
+judgment call. Weight that a source of record assigned does not count as work,
+or indexing a CODEOWNERS file would make every owner look active in everything
+they own.
 
 Read the first of those three carefully. A source of record names people by
 handle and an activity source names them by address, so an owner whose handle
@@ -426,13 +435,13 @@ that person does everywhere else, so the few people who touch everything do not
 take ownership of every area at once. The comparison can only speak for what was
 indexed, so the share is an upper bound on drift rather than a measurement of it.
 
-Areas owned only by teams or automation (a `@org/team` handle or a bot
-account) are counted and reported separately: drift compares people, and a
-group is nobody to have held or lost an area. The drift share is computed over
-the judged areas only. The exception is a squad the org chart also knows as a
-team (`alerting-squad` and a team named Alerting): its members become the
-owners of record, and the area is judged by whether one of them leads it. Index
-an org-chart source alongside CODEOWNERS to get this.
+Areas owned only by teams or automation (a `@org/team` handle or a bot account)
+are counted and reported separately: drift compares people, and a group is
+nobody to have held or lost an area. The drift share is computed over the judged
+areas only. The exception is a squad the org chart also knows as a team
+(`alerting-squad` and a team named Alerting): its members become the owners of
+record, and the area is judged by whether one of them is its lead on record.
+Index an org-chart source alongside CODEOWNERS to get this.
 
 ## whotoask assess
 
@@ -574,7 +583,7 @@ one is visible rather than silent.
 `--unlinked` reports the opposite problem, and usually the larger one. A source
 of record names owners by handle while an activity source records work by
 address, so an owner whose two were never tied together looks exactly like one
-who does nothing: every area they own reads as drifted, and their expertise is
+who does nothing: every area they own reads as drifted, and their record is
 missing from every answer. The flag lists those owners, the ones owning most
 first, which is the worklist for an alias file. Groups named as owners are left
 out, since no alias can tie a group to an address.
@@ -747,11 +756,11 @@ Runs the local web UI over the same engine.
 | `--embed-model` |                  | Ollama embed model.                                          |
 | `--ollama-url`  | localhost        | Ollama base URL.                                             |
 | `--openai-url`  |                  | OpenAI-compatible base URL including the version path.       |
-| `--feedback`    | `normal`         | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
+| `--feedback`    | `normal`         | How hard votes move the order: `off`, `low`, `normal`, `high`. |
 
 Queries are shareable links: `/?q=who+owns+billing` runs on load. Every
 result has feedback buttons, except on a public server: there anyone could
-vote, and votes re-rank the shared index, so a server marked public records
+vote, and votes reorder answers from the shared index, so a server marked public records
 no votes and shows no buttons. Connections are bounded (30s read, 90s
 write, 2min idle) so slow or stalled clients cannot pile up on a shared
 box.
@@ -784,7 +793,7 @@ Takes the same flags as `serve`, plus four of its own.
 ## whotoask mcp
 
 Serves the index to MCP clients over stdio, so agents such as Claude Code
-and Claude Desktop can ask who knows what mid-conversation. Tools:
+and Claude Desktop can ask who to ask mid-conversation. Tools:
 `whotoask_ask`, `whotoask_recall`, `whotoask_person`, `whotoask_directory`.
 
     whotoask mcp [--embed-model name] [--ollama-url url]
@@ -814,7 +823,7 @@ reconnects with backoff.
 | `--embed-model` |                  | Ollama embed model.                                          |
 | `--ollama-url`  | localhost        | Ollama base URL.                                             |
 | `--openai-url`  |                  | OpenAI-compatible base URL including the version path.       |
-| `--feedback`    | `normal`         | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
+| `--feedback`    | `normal`         | How hard votes move the order: `off`, `low`, `normal`, `high`. |
 
 ## whotoask version
 
@@ -897,11 +906,11 @@ What a source states is taken as stated. If a tracker labels its tickets
 `kip-1076`, that is a subject the project has, and whotoask reports it rather than
 deciding which of your labels are real ones.
 
-## Ranking
+## How results are ordered
 
 Keyword scores weight rarer query terms higher, then cap and saturate each
-term's accumulated weight, so repeating a word in chat all day cannot outrank
-the person with the explicit topic, title, or ownership signal. People with
+term's accumulated weight, so repeating a word in chat all day cannot place
+someone above the person with the explicit topic, title, or ownership signal. People with
 far more indexed text than average are further discounted for verbosity, though
 only mildly, for a measured reason: the people who own the most of an
 organization are also the people who appear in the most of it, and discounting
@@ -911,24 +920,24 @@ wins everything. Recency decay and feedback votes then scale the result.
 
 How often somebody touched a subject counts one for one at first and
 logarithmically after that, so an owner with three hundred commits in an area
-outranks somebody with four, while no single subject can run away with a
+is listed above somebody with four, while no single subject can run away with a
 person's whole profile.
 
 Both of those are tuned against real repositories rather than by taste. The
 measure is a project's own CODEOWNERS file: index only its commit history, hold
-the ownership file out, and ask whotoask who knows each area. The labels are
+the ownership file out, and ask whotoask who to ask about each area. The labels are
 written by that project's maintainers, so the answer is not graded by us.
 
-A reason reading `zwave (topic, not lately)` means the person knows the subject
-but has stopped working on it. Knowing something best is not the same as still
-being in it: measured against a real repository, the leading expert of two
-subjects in five had already stopped touching them, and such a lead was less
-than half as likely to still hold the subject six months on. Sources that cannot
+A topic reason can note that the person's record on it has no recent activity.
+Being the lead on record is not the same as still being in it: measured against
+a real repository, the lead on record of two subjects in five had already
+stopped touching them, and such a lead was less than half as likely to still
+hold the subject six months on. Sources that cannot
 say what was recent claim nothing either way.
 
 A term that matches nothing falls back to fuzzy matching: the closest indexed
 term within one edit (four-letter terms and up) or two edits (seven and up)
-scores instead, at a penalty per edit so an exact match always outranks a
+scores instead, at a penalty per edit so an exact match is always listed above a
 corrected one. A corrected term says so in the reasons and names what it
 was read as, e.g. `terraform (topic, read for "terrafrom")`, so a lucky save can
 be told from a wrong guess.
@@ -936,7 +945,7 @@ be told from a wrong guess.
 ## Recency
 
 Dated records lose half their weight per half-life, 180 days by default, so
-today's owner outranks one from years ago. Tune with `--half-life-days` at
+today's owner is listed above one from years ago. Tune with `--half-life-days` at
 index time; `0` disables decay. Undated sources (org chart, CODEOWNERS,
 on-call) describe the present and never decay.
 
@@ -1024,7 +1033,7 @@ Keychain are the app's to delete.
 | -------------------------------- | ----------------------------------------------------------- |
 | `Open(dir, key)`                 | A handle on the data directory, or an error naming the key. |
 | `Handle.SetSecrets(s)`           | Nothing. Sets where source tokens are read from.            |
-| `Handle.Ask(q, limit)`           | The `ask --json` answer, keyword ranking only.              |
+| `Handle.Ask(q, limit)`           | The `ask --json` answer, keyword order only.                |
 | `Handle.Search(q, limit)`        | The `search --json` results.                                |
 | `Handle.Person(id)`              | The full profile of one person, as JSON, with `links`.      |
 | `Handle.Recall(who, q, limit)`   | The `recall --json` answer for one person.                  |

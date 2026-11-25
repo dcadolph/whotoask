@@ -29,7 +29,7 @@ id and its index in its own container, and neither can read the command line's
 Socrates. It is a template image drawn from the site's mark, so macOS paints it to suit the menu
 bar. Typing in its search field asks who to talk to, and Enter opens a Slack DM with the first
 person, or shows them when the index has no Slack link for them. Clicking a person shows what the
-index knows about them. Above the results it lists who and what joined or left since the menu last
+index has on record for them. Above the results it lists who and what joined or left since the menu last
 closed.
 
 Settings holds the tokens, Jira and Confluence sites, and scopes for each source, and the

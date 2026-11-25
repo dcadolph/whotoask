@@ -29,7 +29,7 @@ When you add a source, add it to the simulation and its assertions.
 
 ## Measuring a change
 
-Nothing about ranking or identity is obvious enough to change on judgment.
+Nothing about result order or identity is obvious enough to change on judgment.
 Several plausible improvements to this codebase were measured and turned out to
 make things worse, and without a number every one of them would have shipped.
 
@@ -50,7 +50,7 @@ no recorded work anywhere is usually an identity that was never joined to their
 commits. An owner who works elsewhere but never in the area they own is paper
 ownership, and WhoToAsk is probably right to disagree. An owner merely out-worked
 in their own area is the arguable case, and the only one that is really about
-ranking.
+the order.
 
 Read **On the same questions** first. Every score here is conditioned on what
 was indexed, so a change that alters coverage makes the totals move for reasons
@@ -59,7 +59,7 @@ answer, and names which ones were won and lost, because a change that wins ten
 and loses ten has improved nothing.
 
 The trap is not hypothetical. Widening the history window on a real project
-moved the overall Ranked score from 72.1% to 57.1%, which reads as a serious
+moved the overall score from 72.1% to 57.1%, which reads as a serious
 regression. On the areas both runs could answer it went from 74.6% to 80.5%: the
 wider index was being scored on 224 extra questions the narrower one never had
 to face, and they were the hard ones.
@@ -72,7 +72,7 @@ can be measured against real data without pointing WhoToAsk at anything private.
 
 ## Checking a finding against the source, not against WhoToAsk
 
-`whotoask eval` scores ranking against declared ownership. It cannot tell you
+`whotoask eval` scores the order against declared ownership. It cannot tell you
 whether a knowledge-risk finding is *true*, because it reads the same index the
 finding came from. For that, check against the history directly.
 

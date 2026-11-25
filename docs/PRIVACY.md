@@ -147,6 +147,11 @@ their known hosts.
 
 ## What findings are for
 
-Knowledge-risk findings describe where knowledge and systems rest on too few
-people. They never rank, score, or label people, and they must not be used for
-performance reviews or any other employment decision.
+WhoToAsk reads the record your team's tools keep. For a question, it lists the
+people and channels whose record matches, best match first. For a subject, it
+shows how that record is split among people. Both describe the record, not the
+person. A weak or missing match is not evidence about anyone, because work done
+in meetings, in pairing, or in tools WhoToAsk does not read leaves no record.
+Its findings must not be used for performance reviews, layoffs, or any other
+employment decision. A subject with one person on record is a sign the team
+needs a second person on it.

@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhoToAsk: know who to ask</title>
-<meta name="description" content="Ask a question about your work. WhoToAsk tells you who on your team knows the answer, why, and which channel to post it in. Free, open source, and it runs on your machine.">
+<meta name="description" content="Ask a question about your work. WhoToAsk lists the people on your team whose record matches it, the reasons it found, and the channels to ask in. Free, open source, and it runs on your machine.">
 <link rel="canonical" href="https://whotoask.app/">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css?v=4">
 <meta property="og:title" content="WhoToAsk: know who to ask">
-<meta property="og:description" content="Ask a question about your work. WhoToAsk tells you who on your team knows the answer, why, and which channel to post it in.">
+<meta property="og:description" content="Ask a question about your work. WhoToAsk lists the people on your team whose record matches it, the reasons it found, and the channels to ask in.">
 <meta property="og:url" content="https://whotoask.app/">
 <meta property="og:type" content="website">
 </head>
@@ -34,8 +34,8 @@
     <div>
       <p class="small">Free and open source</p>
       <h1>Know <span class="who">who</span> to ask.</h1>
-      <p class="lede">Ask a question about your work. WhoToAsk tells you who on your team knows the
-        answer, why, and which channel to post it in.</p>
+      <p class="lede">Ask a question about your work. WhoToAsk tells you who to ask, why, and
+        which channel to ask in.</p>
       <div class="actions">
         <a class="btn primary" href="#install">Install</a>
         <a class="btn ghost" href="https://github.com/dcadolph/whotoask">See the code</a>
@@ -52,20 +52,20 @@
 <section class="band" id="what">
   <div class="w">
     <p class="small">What it does</p>
-    <h2>A name, and the reason for it.</h2>
+    <h2>Names, and the record behind them.</h2>
     <p>WhoToAsk looks through the tools your team already uses and turns them into answers you can
       act on.</p>
     <div class="cards">
       <div class="card">
-        <h3>Who knows this?</h3>
-        <p>Type something like "who knows about billing retries" and get the people who have done
-          the work, why each one came up, and how sure WhoToAsk is. It also names the channels
+        <h3>Who should I ask?</h3>
+        <p>Type something like "who do I talk to about billing retries" and get the people whose
+          record matches, best match first, with the reasons it found. It also names the channels
           where the topic comes up.</p>
       </div>
       <div class="card">
-        <h3>Who is the only one?</h3>
-        <p>It shows where only one person knows how something works, so the team can spread that
-          knowledge before it turns into a problem.</p>
+        <h3>Who is the only one on record?</h3>
+        <p>It shows where a subject has only one person on record, so the team can put a second
+          person on it before it turns into a problem.</p>
       </div>
       <div class="card">
         <h3>What happened last time?</h3>
@@ -86,11 +86,13 @@
     <p class="small">Ground rules</p>
     <h2>Not for judging people.</h2>
     <div class="rule">
-      <p>WhoToAsk shows where knowledge and systems are at risk. It never ranks, scores, or labels
-        people, and what it finds must not be used for performance reviews, layoffs, or any other
-        decision about someone's job.</p>
-      <p>If one person turns out to be the only one who knows something, that means the team needs
-        a second person who knows it.</p>
+      <p>WhoToAsk reads the record your team's tools keep. For a question, it lists the people and
+        channels whose record matches, best match first. For a subject, it shows how that record is
+        split among people. Both describe the record, not the person.</p>
+      <p>A weak or missing match is not evidence about anyone, because work done in meetings, in
+        pairing, or in tools WhoToAsk does not read leaves no record. Its findings must not be used
+        for performance reviews, layoffs, or any other employment decision.</p>
+      <p>A subject with one person on record is a sign the team needs a second person on it.</p>
     </div>
   </div>
 </section>
@@ -142,21 +144,22 @@ gh attestation verify whotoask_&lt;version&gt;_linux_amd64.tar.gz --repo dcadolp
       <div class="card">
         <span class="num">1</span>
         <h3>Start with a repo</h3>
-        <p>Point it at a repository you already have. It reads the git history and shows which
-          folders only one person knows. No tokens, nothing fetched.</p>
-        <pre><code>whotoask demo --repo .</code></pre>
+        <p>Index the git history of a repository you already have, then ask in your own words. No
+          tokens, nothing fetched.</p>
+        <pre><code>whotoask index --source git --repo-path .
+whotoask ask "who do I talk to about billing retries"</code></pre>
       </div>
       <div class="card">
         <span class="num">2</span>
-        <h3>Ask a question</h3>
-        <p>Load your team, then ask in your own words.</p>
-        <pre><code>whotoask index --source org-csv --file examples/people.csv
-whotoask ask --pretty "who do I talk to about billing retries"</code></pre>
+        <h3>Try the sample</h3>
+        <p>Open the web UI on a simulated company that uses every source. Nothing is kept when it
+          stops.</p>
+        <pre><code>whotoask demo</code></pre>
       </div>
       <div class="card">
         <span class="num">3</span>
         <h3>Look back</h3>
-        <p>When the person who knew has left, ask what happened.</p>
+        <p>When the person on record has left, ask what happened.</p>
         <pre><code>whotoask recall "certificate renewal"</code></pre>
       </div>
     </div>
@@ -190,8 +193,8 @@ whotoask ask --pretty "who do I talk to about billing retries"</code></pre>
   <div class="w">
     <p class="small">Privacy</p>
     <h2>Stays on your machine.</h2>
-    <p>Keyword search needs no AI model and always works. For smarter search and written answers,
-      use a local Ollama model, or turn on Claude, Gemini, or OpenAI yourself.</p>
+    <p>Keyword search needs no AI model and always works. To search by meaning, or to let a model
+      set the order, use a local Ollama model, or turn on Claude, Gemini, or OpenAI yourself.</p>
     <p>Out of the box, everything is worked out on your machine and nothing goes to an outside
       model. <a href="/privacy">Read the privacy policy</a>.</p>
   </div>

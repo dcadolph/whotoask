@@ -197,7 +197,7 @@ Slack and the org chart.
 
 Verify:
 
-    whotoask ask "who knows the payments service"
+    whotoask ask "who do I talk to about the payments service"
 
 Common fixes:
 
@@ -280,7 +280,7 @@ Verify:
 ## Matters (billing or practice-management CSV)  ·  2 minutes
 
 What you get: who billed time to which matter, in which practice area, doing
-what. Billing narratives are the richest expertise signal a professional-
+what. Billing narratives are the richest record of work a professional-
 services firm has: people describe their own work, per matter, dated. Every
 practice-management and billing system exports this as CSV, so no API
 integration is needed.
@@ -297,9 +297,9 @@ Try it on the sample first:
 
     whotoask index --source matters --file examples/matters.csv
 
-Practice areas and matter names count as stated expertise; narrative words are
+Practice areas and matter names count as stated subjects. Narrative words are
 mined and only corroborate. Entries from the last 180 days feed recency, so
-current work outranks history.
+current work is listed above history.
 
 ## Microsoft Graph (org chart)  ·  2 minutes
 
@@ -383,7 +383,7 @@ A full internal setup, org chart first, then every tool merged onto it:
     whotoask index --source pagerduty  --merge
     whotoask index --source git        --repo-path ~/src/billing --merge
 
-    whotoask ask "who knows the billing service"
+    whotoask ask "who do I talk to about the billing service"
     whotoask serve
 
 Each run prints what joined and left since the last index, like `+3 people, -1 people,

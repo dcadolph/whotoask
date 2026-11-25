@@ -7,11 +7,14 @@ repository with the commands given.
 
 ## What this is not for
 
-The findings measured here describe where knowledge and systems are at risk.
-They never rank, score, or label people, and they must not be used for
-performance reviews, layoffs, or any other employment decision. Naming the
-person a body of work rests on is how the risk is located, and the remedy it
-points at is a second person who knows.
+WhoToAsk reads the record your team's tools keep. For a question, it lists the
+people and channels whose record matches, best match first. For a subject, it
+shows how that record is split among people. Both describe the record, not the
+person. A weak or missing match is not evidence about anyone, because work done
+in meetings, in pairing, or in tools WhoToAsk does not read leaves no record.
+Its findings must not be used for performance reviews, layoffs, or any other
+employment decision. A subject with one person on record is a sign the team
+needs a second person on it.
 
 ## Reproducibility
 
@@ -23,7 +26,7 @@ be able to compare digests and find them equal.
 It was not always true. Three separate accumulations summed floating-point
 weights while ranging Go maps, whose iteration order is randomized per process,
 and float addition is not associative. Subject shares, career totals, and the
-discounted work a directory ranking is ordered by all differed in their last
+discounted work a directory's order is built from all differed in their last
 bits between runs. Nothing visible moved on most runs, and on kubernetes it
 moved a scored directory, which is the same size as the effect measurement five
 was trying to detect. The sums are taken in identifier order now and the
@@ -45,8 +48,8 @@ measurement of nothing.
 So the checks below use targets WhoToAsk was never tuned against and judges
 written independently of it: git itself for the sanity check, and the
 ownership files project maintainers wrote for their own governance for the
-real one. There is no single public ground truth for organizational
-expertise, so separate observable properties are measured separately rather
+real one. There is no single public ground truth for who to ask
+in an organization, so separate observable properties are measured separately rather
 than pretending one benchmark proves the whole system.
 
 ## The method
@@ -87,10 +90,10 @@ judged. The measurement below is the one that does not.
 One correction was applied to git's side, and it matters. Prometheus has no
 `.mailmap`, so its history holds one maintainer under two spellings of a given
 name and another under a full and a shortened given name, as four people where
-there are two. Without folding those, git's own ranking disagrees with itself,
+there are two. Without folding those, git's own order disagrees with itself,
 and WhoToAsk scores 3 of 19 rather than 17. The identity join is not a
-detail on top of the ranking; on a repository without a mailmap it is most of
-what makes the ranking mean anything.
+detail on top of the order. On a repository without a mailmap it is most of
+what makes the order mean anything.
 
 ## Measurement two: recovering human-written ownership
 
@@ -124,7 +127,7 @@ commit counting by thirteen points on test-infra.
 **Where a review happened matters more than how much review data there is.**
 Crediting reviewers with the words of a pull request's title, which is what
 a forge connector naturally gives you, adds nothing an ownership question can
-use: it doubled the population we could judge and left the ranking flat. The
+use: it doubled the population we could judge and left the order flat. The
 same reviews credited against the directories the pull request actually
 changed take test-infra to sixty percent against a twenty-nine percent
 baseline, and take the cohort that commit counting cannot reach from
@@ -281,7 +284,7 @@ a file makes it verify as missing.
 It shows that on a large repository nobody tuned against, WhoToAsk's heaviest
 subjects name people git agrees are doing that work.
 
-It does not show the ranking is right where git is a poor judge, which is most
+It does not show the order is right where git is a poor judge, which is most
 of what the product claims. Commit counts say nothing about the person who
 reviews every change, answers every question in Slack, and commits rarely.
 WhoToAsk reads those sources precisely because the commit log does not hold

@@ -1,7 +1,7 @@
 # Architecture
 
-WhoToAsk turns scattered work data into a queryable map of who knows what and which
-channel to ask in. It is built in layers, each with one job, so a new data source
+WhoToAsk turns scattered work data into a queryable record of who has worked on what
+and which channel to ask in. It is built in layers, each with one job, so a new data source
 or a new way to ask is a small, isolated addition.
 
 ## Data flow
@@ -25,13 +25,13 @@ with weighted edges. People merge across sources by email, so one human is one
 entry.
 
 The index holds the graph plus a keyword posting list and, when built with
-embeddings, a vector per person and channel. It ranks people and channels for a
-query and explains why each matched.
+embeddings, a vector per person and channel. It orders people and channels for a
+query, best match first, and explains why each matched where it can.
 
 Resolvers answer a query and share one Answer shape. The keyword resolver needs
-no model. The semantic resolver ranks by embedding similarity. The LLM resolver
-retrieves candidates, ranks and summarizes with a local model, and stays grounded
-in the real candidates.
+no model. The semantic resolver orders by embedding similarity. The LLM resolver
+retrieves candidates, lets a model set their order, writes the summary locally
+from that order, and stays grounded in the real candidates.
 
 Policy governs model egress. The default is strict: answers never leave the
 machine. Redacted admits only known providers and only anonymized numbered
