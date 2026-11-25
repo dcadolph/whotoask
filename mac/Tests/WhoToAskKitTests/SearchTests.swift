@@ -120,7 +120,7 @@ struct SearchTests {
     }
 
     // Test 5: Enter on a person shown from the results opens that person, not the first one.
-    // Deploy ranks Grace Kim first and Carol Lee, the one with a Slack link, below her. The footer
+    // Deploy lists Grace Kim first and Carol Lee, the one with a Slack link, below her. The footer
     // offers Enter only when there is someone for it to reach.
     @Test func enterOpensShownPerson() async throws {
         let dir = try demoDir()
@@ -149,7 +149,7 @@ struct SearchTests {
     // Test 6: The arrow keys mark a row and stop at both ends, Enter opens the marked person and
     // not the first, the hint names whom Enter reaches and whether it messages or shows them, a
     // field not answered yet promises neither, and a new answer marks the first row again.
-    // Billing kafka ranks four people, and only the fourth, Pam Vance, has no link.
+    // Billing kafka lists four people, and only the fourth, Pam Vance, has no link.
     @Test func arrowsMarkWhoEnterOpens() async throws {
         let dir = try demoDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -245,7 +245,7 @@ struct SearchTests {
 
     // Test 9: Clicking a row shows that person and marks the row, so after Escape the hint and
     // Enter reach the person clicked, and a person not in the results leaves the mark alone.
-    // Billing kafka ranks four people, and the third has a link the first does not share.
+    // Billing kafka lists four people, and the third has a link the first does not share.
     @Test func clickMovesMark() async throws {
         let dir = try demoDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -269,8 +269,7 @@ struct SearchTests {
     }
 
     // Test 10: An arrow key returns the person it marked, which the window speaks, and nothing at
-    // either end, on a person page, or with no results, and the strength bar reads as a whole
-    // percent clamped to the bar.
+    // either end, on a person page, or with no results.
     @Test func movesSayWhoIsMarked() async throws {
         let dir = try demoDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -291,8 +290,6 @@ struct SearchTests {
         try #require(model.detail != nil)
         #expect(model.moveUp() == nil)
         #expect(model.selected == 2)
-        let values = [0.834, 1, 0, 1.4, -0.2].map(SearchModel.strengthValue)
-        #expect(values == ["83 percent", "100 percent", "0 percent", "100 percent", "0 percent"])
     }
 
     // Test 11: A surname alone, which the answer leaves to the name search, lists the people it

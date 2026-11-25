@@ -20,7 +20,7 @@ struct SearchView: View {
     // body lays out the field above the results or the person.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Who knows about…", text: $model.query)
+            TextField("Who to ask about…", text: $model.query)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { Task { await model.submit() } }
@@ -198,7 +198,8 @@ struct TeamRow: View {
     }
 }
 
-// PersonRow is one suggested person: name, role, and why they matched.
+// PersonRow is one suggested person: name, role, and why they matched. It shows no strength,
+// since the order and the match strength come from different numbers.
 struct PersonRow: View {
     // person is the suggestion shown.
     let person: AskPerson
@@ -209,7 +210,6 @@ struct PersonRow: View {
             HStack {
                 NameText(name: person.name, deactivated: person.isDeactivated).font(.body.weight(.medium))
                 Spacer()
-                StrengthBar(strength: person.strength)
             }
             if !person.role.isEmpty {
                 RoleText(line: person.role, deactivated: person.isDeactivated).font(.caption)
@@ -290,24 +290,6 @@ struct ChannelRow: View {
         } else {
             Text("#\(channel.name)")
         }
-    }
-}
-
-// StrengthBar draws a match's strength relative to the best one.
-struct StrengthBar: View {
-    // strength is zero to one.
-    let strength: Double
-
-    // body is a short filled bar.
-    var body: some View {
-        ZStack(alignment: .leading) {
-            Capsule().fill(.quaternary)
-            Capsule().fill(.tint).frame(width: 40 * max(0.05, min(1, strength)))
-        }
-        .frame(width: 40, height: 4)
-        .accessibilityElement()
-        .accessibilityLabel("Match strength")
-        .accessibilityValue(SearchModel.strengthValue(strength))
     }
 }
 

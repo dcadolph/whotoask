@@ -135,7 +135,7 @@ public final class SearchModel: ObservableObject {
         do {
             let answer = try await core.ask(trimmed, limit: 5)
             guard mine == generation else { return }
-            // The departed close the people list, so the ranking reads as one list with them at
+            // The departed close the people list, so the order reads as one list with them at
             // the bottom, each marked.
             let people = (answer.people ?? []) + (answer.departed ?? [])
             let channels = answer.channels ?? []
@@ -223,12 +223,6 @@ public final class SearchModel: ObservableObject {
         guard row != selected else { return nil }
         selected = row
         return marked
-    }
-
-    // strengthValue says a match strength from zero to one as a whole percent, such as
-    // "83 percent", for VoiceOver to read beside the bar.
-    public static func strengthValue(_ strength: Double) -> String {
-        "\(Int((max(0, min(1, strength)) * 100).rounded())) percent"
     }
 
     // showMarked shows the marked person in place of the results, which Command-Return does. As

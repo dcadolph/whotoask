@@ -53,61 +53,48 @@ struct SearchWindow {
         return await waitFor { model.answered == text && model.people.count == count }
     }
 
-    // bars returns the height, in view points from the top, of each person's strength bar, one
-    // per row of people in order. The bar's first two points are always filled, so a column
-    // through them finds every bar. A bar is four points tall, so a button, which is taller, and
-    // the one-point outline of a mark under Increase Contrast are left out.
-    func bars(_ rep: NSBitmapImageRep) -> [CGFloat] {
-        let scale = CGFloat(rep.pixelsWide) / rep.size.width
-        let x = rep.size.width - 12 - 39
-        var found: [CGFloat] = []
-        var start: Int?
-        for row in 0...rep.pixelsHigh {
-            let solid = row < rep.pixelsHigh && ink(rep, x: x, y: CGFloat(row) / scale) > 0.5
-            if solid, start == nil { start = row }
-            if !solid, let top = start {
-                let tall = CGFloat(row - top) / scale
-                if tall >= 3, tall <= 6 { found.append(CGFloat(top + row) / 2 / scale) }
-                start = nil
-            }
-        }
-        return found
+    // rows returns each person row's frame, in view points from the top left, one per row of
+    // people in order. AppKit backs each plain row button with a view of the row's exact size,
+    // so the rows are the views that span the content's full width below the search field,
+    // which is the topmost of them. A person page has none.
+    func rows() -> [CGRect] {
+        let view = hosted.view
+        let width = view.bounds.width - 24
+        let wide = view.subviews.map { place($0.frame) }
+            .filter { $0.minX == 12 && $0.width == width }
+            .sorted { $0.minY < $1.minY }
+        return Array(wide.dropFirst())
+    }
+
+    // place turns a frame in the hosting view into view points from the top left.
+    func place(_ frame: CGRect) -> CGRect {
+        if hosted.view.isFlipped { return frame }
+        let top = hosted.view.bounds.height - frame.maxY
+        return CGRect(x: frame.minX, y: top, width: frame.width, height: frame.height)
+    }
+
+    // lines returns the height, in view points from the top, of each person's name line, one per
+    // row of people in order. The name sits on the row's first line, under three points of
+    // padding.
+    func lines() -> [CGFloat] {
+        rows().map { $0.minY + 11 }
     }
 
     // marked returns the rows, counted from zero, that carry the mark in the rendered window,
-    // read in the middle of each row's name line, where only the mark's fill is drawn.
+    // read on each row's name line far enough right that no name reaches it, where only the
+    // mark's fill is drawn.
     func marked() throws -> [Int] {
         let rep = try hosted.render()
-        let rows = bars(rep).enumerated()
-        return rows.filter { ink(rep, x: 200, y: $0.element) > 0.03 }.map(\.offset)
+        return lines().enumerated().filter { ink(rep, x: 300, y: $0.element) > 0.03 }.map(\.offset)
     }
 
     // edge returns the strongest ink just left of row's name line, where only the mark's outline
     // is drawn, from zero for nothing to one for solid.
     func edge(_ row: Int) throws -> CGFloat {
         let rep = try hosted.render()
-        let found = bars(rep)
-        try #require(found.count > row, "bars \(found)")
+        let found = lines()
+        try #require(found.count > row, "lines \(found)")
         return stride(from: 0, to: 11, by: 0.5).map { ink(rep, x: $0, y: found[row]) }.max() ?? 0
-    }
-
-    // bands returns the top pixel row of each run of rows that draw something opaque in the
-    // window's right-hand 80 points, where only the strength bars and the buttons sit, so a row
-    // that moves moves its band. The mark's fill is too faint to count.
-    func bands() throws -> [Int] {
-        let rep = try hosted.render()
-        let scale = CGFloat(rep.pixelsWide) / rep.size.width
-        let left = Int((rep.size.width - 80) * scale)
-        var tops: [Int] = []
-        var inside = false
-        for y in 0..<rep.pixelsHigh {
-            let opaque = (left..<rep.pixelsWide).contains { x in
-                (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5
-            }
-            if opaque, !inside { tops.append(y) }
-            inside = opaque
-        }
-        return tops
     }
 
     // close takes the window down and removes the demo index.
@@ -130,12 +117,12 @@ extension ViewTests {
             #expect(await search.ask("billing kafka", people: 4))
             let names = search.model.people.map(\.name)
             await search.hosted.steady()
-            #expect(search.bars(try search.hosted.render()).count == 4)
+            #expect(search.rows().count == 4)
             #expect(try search.marked() == [0])
             #expect(search.model.enterHint == "Enter messages the first person.")
             let frame = search.hosted.window.frame
             let fitting = search.hosted.view.fittingSize
-            let bands = try search.bands()
+            let rows = search.rows()
             search.hosted.press(.down)
             search.hosted.press(.down)
             #expect(search.model.selected == 2)
@@ -144,7 +131,7 @@ extension ViewTests {
             #expect(try search.marked() == [2])
             #expect(search.hosted.window.frame == frame)
             #expect(search.hosted.view.fittingSize == fitting)
-            #expect(try search.bands() == bands)
+            #expect(search.rows() == rows)
             search.hosted.press(.enter)
             #expect(await waitFor(3) { !search.opened.urls.isEmpty })
             let third = try await search.core.person(search.model.people[2].id)
@@ -165,7 +152,7 @@ extension ViewTests {
             search.hosted.press(.commandEnter)
             #expect(await waitFor(3) { search.model.detail?.name == names[2] })
             await search.hosted.steady()
-            #expect(search.bars(try search.hosted.render()).isEmpty)
+            #expect(search.rows().isEmpty)
             search.hosted.press(.escape)
             #expect(await waitFor(3) { search.model.detail == nil })
             #expect(search.model.selected == 2)

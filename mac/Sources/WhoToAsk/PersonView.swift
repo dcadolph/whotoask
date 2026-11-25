@@ -1,7 +1,7 @@
 import WhoToAskKit
 import SwiftUI
 
-// PersonView shows everything the index knows about one person, with a way back to the results.
+// PersonView shows everything the index has on record for one person, with a way back to the results.
 struct PersonView: View {
     // person is the person shown.
     let person: PersonDetail
@@ -24,7 +24,7 @@ struct PersonView: View {
                 Field(label: "Manager", value: manager.name)
             }
             if let topics = person.topics, !topics.isEmpty {
-                Field(label: "Knows", value: topics.prefix(8).joined(separator: ", "))
+                Field(label: "On record for", value: topics.prefix(8).joined(separator: ", "))
             }
             if let channels = person.channels, !channels.isEmpty {
                 Field(label: "Active in", value: channels.prefix(6).map { "#\($0)" }.joined(separator: ", "))
