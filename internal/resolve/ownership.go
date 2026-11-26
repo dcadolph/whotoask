@@ -1,9 +1,6 @@
 package resolve
 
 import (
-	"maps"
-	"math"
-	"slices"
 	"sort"
 	"strings"
 
@@ -17,14 +14,15 @@ type OwnerDrift struct {
 	Topic string `json:"topic"`
 	// Declared are the owners of record, by name, such as from CODEOWNERS.
 	Declared []string `json:"declared"`
-	// Actual is the strongest actual expert by activity, by name.
+	// Actual is the subject's lead on record, by name: the same person risk
+	// names as its lead.
 	Actual string `json:"actual"`
 	// Why says how the owner of record stands in relation to their own area:
 	// whether they have done no recorded work at all, none in this area, or
 	// some but less than whoever leads it. The three are different problems and
 	// call for different things to be done about them.
 	Why string `json:"why"`
-	// ActualID is the actual expert's canonical id.
+	// ActualID is the lead's canonical id.
 	ActualID string `json:"actualId"`
 	// DeclaredIDs are the owners of record by canonical id, in the same order
 	// as Declared, so a reader can be taken to the person rather than shown a
@@ -282,86 +280,6 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 	return mine > most*driftMargin
 }
 
-// actualOwnerOf picks whoever has done the most direct work in the area, over
-// everyone in the graph. The risk view's expert list cannot be used for this:
-// it is capped at five for display and ranked by affinity share, and affinity
-// on a common word is diluted by everyone who has ever typed it, so the person
-// with the most focused work in the area is routinely not on it. On a real
-// project the top committer of an area, eleven focused changes, was invisible
-// to ownership for exactly that reason. The capped list keeps its job, which is
-// being read; deciding ownership is not it.
-//
-// It returns false when nobody has direct work in the area, and the caller
-// falls back to the discounted ranking over the displayed experts, which is
-// the best available where no source can tell focused work from sweeping.
-func actualOwnerOf(ix *index.Index, topic model.ID) (RiskExpert, bool) {
-	var best model.ID
-	var bestScore, bestPull float64
-	for id, p := range ix.Graph.People {
-		if len(p.Direct) == 0 {
-			continue
-		}
-		canon := ix.CanonicalID(id)
-		score := p.Direct[topic]
-		if score <= 0 {
-			continue
-		}
-		// Ties are real: two people with the same number of focused commits.
-		// They break on overall engagement with the subject, work only, which
-		// reaches past commits into everything else the person has done around
-		// it. Breaking them by identifier handed an area to whoever sorted
-		// first, and on a real project that named the co-leader whose edge the
-		// history does not support.
-		pull := p.Topics[topic] - p.Stated[topic]
-		if score > bestScore ||
-			(score == bestScore && pull > bestPull) ||
-			(score == bestScore && pull == bestPull && canon < best) {
-			best, bestScore, bestPull = canon, score, pull
-		}
-	}
-	if bestScore <= 0 {
-		return RiskExpert{}, false
-	}
-	return RiskExpert{ID: string(best), Name: personName(ix, best)}, true
-}
-
-// actualOwner is the fallback for areas where no source could tell focused
-// work from sweeping: raw weight would hand every area to the busiest person in
-// the organization, so each candidate is discounted by the square root of their
-// whole career. A proxy for a distinction the data cannot draw, kept only where
-// it is the best available.
-func actualOwner(ix *index.Index, tr TopicRisk) RiskExpert {
-	topic := model.ID(tr.Topic)
-	best, bestScore := tr.Experts[0], -1.0
-	for _, e := range tr.Experts {
-		p := ix.Graph.People[ix.CanonicalID(model.ID(e.ID))]
-		if p == nil {
-			continue
-		}
-		here := p.Topics[topic] - p.Stated[topic]
-		if here <= 0 {
-			continue
-		}
-		// Summed in identifier order. Float addition is not associative and Go
-		// randomizes map iteration, so accumulating a career total as the map
-		// yields it gives a different last bit each run, and this total is a
-		// divisor for every score below it.
-		var total float64
-		for _, tid := range slices.Sorted(maps.Keys(p.Topics)) {
-			if work := p.Topics[tid] - p.Stated[tid]; work > 0 {
-				total += work
-			}
-		}
-		if total <= 0 {
-			continue
-		}
-		if score := here / math.Sqrt(total); score > bestScore {
-			best, bestScore = e, score
-		}
-	}
-	return best
-}
-
 // OwnershipReport is what a source of record says about ownership set against
 // what the work says: the areas that moved, and the count they moved out of.
 // The count is the finding. A list of drifted areas invites the reading that
@@ -526,15 +444,15 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 			}
 			owners = members
 		}
-		actual, ok := actualOwnerOf(ix, model.ID(tr.Topic))
-		if !ok {
-			actual = actualOwner(ix, tr)
-		}
-		area := OwnedArea{Topic: tr.Topic, Actual: actual.Name, ActualID: actual.ID}
+		// The actual owner is the subject's lead, read off the same finding risk
+		// prints, so ownership and risk cannot name two people for one subject.
+		// Where nobody has done work beyond being assigned it there is no lead,
+		// and nobody to have taken the area from its owner.
+		area := OwnedArea{Topic: tr.Topic, Actual: tr.Lead, ActualID: tr.LeadID}
 		switch {
-		case owners[ix.CanonicalID(model.ID(actual.ID))]:
+		case tr.LeadID == "" || owners[ix.CanonicalID(model.ID(tr.LeadID))]:
 			area.Standing = StandingHeld
-		case !displaced(ix, owners, model.ID(actual.ID), model.ID(tr.Topic)):
+		case !displaced(ix, owners, model.ID(tr.LeadID), model.ID(tr.Topic)):
 			// Somebody else ranks higher, but not by enough to say the job has
 			// changed hands. The owner of record still holds the area.
 			area.Standing = StandingHeld

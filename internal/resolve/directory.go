@@ -83,8 +83,9 @@ type DirectoryTopic struct {
 	Name string `json:"name"`
 	// People is how many people carry the topic.
 	People int `json:"people"`
-	// Lead is the display name of whoever holds the most of it, so a row says
-	// who to ask without another click.
+	// Lead is the display name of the subject's lead on record, the same person
+	// risk and ownership name, so a row says who to ask without another click.
+	// Empty when nobody has done work on it beyond being assigned it.
 	Lead string `json:"lead,omitempty"`
 	// Active is how many of those people have worked on it lately. A subject
 	// several people know and nobody still touches is the interesting case, and
@@ -240,28 +241,22 @@ func BuildDirectory(ix *index.Index) Directory {
 			holders[name][id] = true
 		}
 	}
+	lead := leads(ix)
 	for name, people := range holders {
 		row := DirectoryTopic{Name: name, People: len(people)}
-		var best float64
+		if who := lead[model.ID(name)]; who != "" {
+			row.Lead = personName(ix, who)
+		}
 		for id := range people {
 			p := g.People[id]
 			if p == nil {
 				continue
 			}
-			// Topics run sorted so the sums, and the lead they pick, are the
-			// same every run.
-			var mine, recent float64
-			for _, tid := range slices.Sorted(maps.Keys(p.Topics)) {
-				if groups[string(tid)] == name || string(tid) == name {
-					mine += p.Topics[tid]
-					recent += p.Recent[tid]
+			for tid, w := range p.Recent {
+				if w > 0 && (groups[string(tid)] == name || string(tid) == name) {
+					row.Active++
+					break
 				}
-			}
-			if recent > 0 {
-				row.Active++
-			}
-			if mine > best || (mine == best && p.Name < row.Lead) {
-				best, row.Lead = mine, p.Name
 			}
 		}
 		d.Topics = append(d.Topics, row)

@@ -73,7 +73,7 @@ type Exposure struct {
 	Name string
 	// ID is the person's canonical identifier.
 	ID string
-	// Sole are the topics no one else covers at all.
+	// Sole are the topics no one else active is on record for.
 	Sole []string
 	// Leading are the topics they lead while others still contribute.
 	Leading []string
@@ -184,8 +184,8 @@ func CheckNotes(checks []resolve.CheckCommand) []string {
 
 // Exposures turns per-topic risk into per-person risk, which is the form the
 // question actually gets asked in: not "which topics are concentrated" but
-// "who can we not afford to lose". A topic with a single expert is theirs
-// alone; a topic they merely lead still has cover behind them.
+// "who can we not afford to lose". A topic nobody else active is on record for
+// is theirs alone, and a topic they merely lead still has cover behind them.
 func Exposures(risks []resolve.TopicRisk) []Exposure {
 	byID := make(map[string]*Exposure)
 	at := func(e resolve.RiskExpert) *Exposure {
@@ -197,26 +197,26 @@ func Exposures(risks []resolve.TopicRisk) []Exposure {
 		return ex
 	}
 	for _, r := range risks {
-		if len(r.Experts) == 0 {
+		// Alone on record is read the same way the departure view reads it, so
+		// the brief and a departure check cannot disagree about a person.
+		if h, ok := r.SoleHolder(); ok {
+			ex := at(h)
+			ex.Sole = append(ex.Sole, r.Topic)
 			continue
 		}
 		// The lead is who the subject rests on; the share ranking is who has
 		// touched it. Attributing exposure by share handed half a real
-		// project's subjects to its five widest-ranging committers.
-		top := r.Experts[0]
-		if r.Lead != "" {
-			top = resolve.RiskExpert{ID: r.LeadID, Name: r.Lead}
-			for _, e := range r.Experts {
-				if e.ID == r.LeadID {
-					top = e
-					break
-				}
-			}
-		}
-		if len(r.Experts) == 1 {
-			ex := at(top)
-			ex.Sole = append(ex.Sole, r.Topic)
+		// project's subjects to its five widest-ranging committers. A subject
+		// with no lead has nobody leading it to attribute.
+		if r.Lead == "" {
 			continue
+		}
+		top := resolve.RiskExpert{ID: r.LeadID, Name: r.Lead}
+		for _, e := range r.Experts {
+			if e.ID == r.LeadID {
+				top = e
+				break
+			}
 		}
 		if r.Level != "ok" {
 			ex := at(top)
@@ -247,7 +247,8 @@ type Counts struct {
 	Critical int
 	// Elevated is how many topics scored elevated.
 	Elevated int
-	// SinglePoint is how many topics rest on exactly one person.
+	// SinglePoint is how many topics have one active person on record and
+	// nobody else.
 	SinglePoint int
 	// Exposed is how many people solely hold at least one topic.
 	Exposed int
@@ -269,7 +270,7 @@ func Count(risks []resolve.TopicRisk, exposed []Exposure) Counts {
 		case "elevated":
 			c.Elevated++
 		}
-		if len(r.Experts) == 1 {
+		if _, ok := r.SoleHolder(); ok {
 			c.SinglePoint++
 		}
 		if r.LeadQuiet() {

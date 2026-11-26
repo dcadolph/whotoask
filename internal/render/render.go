@@ -679,6 +679,8 @@ func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
 			switch {
 			case e.Deactivated:
 				note = s.Dim("  deactivated")
+			case e.Declared:
+				note = s.Dim("  declared, no work on record")
 			case e.Quiet:
 				note = s.Dim("  no recent activity on record")
 			}
@@ -716,6 +718,14 @@ func riskTopicWidth(topics []resolve.TopicRisk) int {
 // RenderDeparture prints the subjects a person is the lead on record for, which
 // is what a team would pick up if they were out.
 func RenderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s Style) {
+	if imp.Person == "" && len(imp.Candidates) > 0 {
+		fmt.Fprintln(w, s.Dim(fmt.Sprintf("“%s” matches %d people. Name one by email or id:",
+			EscapeControls(query), len(imp.Candidates))))
+		for _, c := range imp.Candidates {
+			fmt.Fprintf(w, "  %s  %s\n", EscapeControls(c.Name), s.Dim(EscapeControls(c.ID)))
+		}
+		return
+	}
 	if imp.Person == "" {
 		fmt.Fprintln(w, s.Dim("No one matches “"+query+"”."))
 		return
@@ -738,7 +748,7 @@ func RenderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s S
 		fmt.Fprintf(w, "    %s\n", strings.Join(EscapeControlsList(r.Topics), ", "))
 	}
 	if len(imp.Sole) > 0 {
-		fmt.Fprintf(w, "\n  %s\n", s.Bad(fmt.Sprintf("Only person on record (%d)", len(imp.Sole))))
+		fmt.Fprintf(w, "\n  %s\n", s.Bad(fmt.Sprintf("Only active person on record (%d)", len(imp.Sole))))
 		for _, t := range imp.Sole {
 			fmt.Fprintf(w, "    %s %s\n", s.Bad("•"), EscapeControls(t))
 		}

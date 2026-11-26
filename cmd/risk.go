@@ -64,6 +64,9 @@ Examples:
 			if len(args) > 0 {
 				who := strings.Join(args, " ")
 				imp := resolve.Departure(ix, who)
+				if len(imp.Candidates) > 0 {
+					return ambiguousPersonError(who, imp.Candidates)
+				}
 				return opts.render(cmd.OutOrStdout(), imp, func(w io.Writer, s style) {
 					render.RenderDeparture(w, who, imp, s)
 					renderNotFor(w, s)
@@ -85,6 +88,17 @@ Examples:
 	cmd.Flags().StringVar(&htmlPath, "html", "",
 		"Write a self-contained HTML brief to this path, for sending to somebody without whotoask.")
 	return cmd
+}
+
+// ambiguousPersonError refuses a person query that matches more than one
+// person and names each of them by id, so the asker can repeat it with one.
+func ambiguousPersonError(query string, candidates []resolve.RiskExpert) error {
+	names := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		names = append(names, fmt.Sprintf("%s (%s)", c.Name, c.ID))
+	}
+	return fmt.Errorf("%w: %q matches %d people, name one by email or id: %s",
+		ErrBadArgs, query, len(candidates), strings.Join(names, ", "))
 }
 
 // regionsShown is how many joined bodies of work the report names. They are

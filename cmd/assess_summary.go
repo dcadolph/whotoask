@@ -23,11 +23,15 @@ const summaryListed = 5
 // and 6. A reader who counts the files finds a number the summary does not
 // have, which is the fastest way to lose an assessment.
 type assessCounts struct {
-	// Sole is subjects with exactly one person in the record.
+	// Sole is subjects with one active person on record and nobody else, read
+	// by the same rule the departure file uses.
 	Sole int
-	// BusOne and BusTwo are subjects where one or two people hold the majority
-	// of the work, whoever else has touched it.
+	// BusOne and BusTwo are subjects where one or two people hold 80 percent
+	// of the record, whoever else has touched it.
 	BusOne, BusTwo int
+	// BusOneShared is the subjects counted in BusOne that are not Sole: one
+	// person holds most of the record and somebody else active is on it too.
+	BusOneShared int
 	// Critical and Elevated are the severity levels, which weigh concentration
 	// against how much work the subject carries.
 	Critical, Elevated int
@@ -45,13 +49,17 @@ func countAssess(findings []resolve.TopicRisk) assessCounts {
 		case "elevated":
 			c.Elevated++
 		}
+		_, sole := f.SoleHolder()
 		switch f.BusFactor {
 		case 1:
 			c.BusOne++
+			if !sole {
+				c.BusOneShared++
+			}
 		case 2:
 			c.BusTwo++
 		}
-		if len(f.Experts) == 1 {
+		if sole {
 			c.Sole++
 		}
 		if f.LeadQuiet() {
@@ -148,10 +156,10 @@ func writeSummaryDepartures(b *strings.Builder, departures []resolve.DepartureIm
 			line := fmt.Sprintf("- %s: ", d.Name)
 			switch {
 			case len(d.Sole) > 0 && len(d.Top) > 0:
-				line += fmt.Sprintf("only person on record for %s, and the lead on record for %s",
+				line += fmt.Sprintf("only active person on record for %s, and the lead on record for %s",
 					listSome(d.Sole), listSome(d.Top))
 			case len(d.Sole) > 0:
-				line += "only person on record for " + listSome(d.Sole)
+				line += "only active person on record for " + listSome(d.Sole)
 			default:
 				line += "the lead on record for " + listSome(d.Top)
 			}
@@ -198,7 +206,7 @@ func writeSummaryActions(b *strings.Builder, res *assessment, c assessCounts) {
 	}
 	if c.Sole > 0 {
 		fmt.Fprintf(b, "- Confirm transition plans for the subjects with only one "+
-			"person on record; %d subjects have nobody else in the record at all.\n",
+			"active person on record. %d subjects have nobody else active in the record.\n",
 			c.Sole)
 	}
 	if c.Quiet > 0 {
@@ -277,12 +285,12 @@ func concentrationLine(c assessCounts) string {
 	var parts []string
 	if c.Sole > 0 {
 		parts = append(parts, fmt.Sprintf(
-			"%d %s one person in the record and nobody else",
+			"%d %s one active person in the record and nobody else",
 			c.Sole, pick(c.Sole, "subject has", "subjects have")))
 	}
-	if more := c.BusOne - c.Sole; more > 0 {
+	if c.BusOneShared > 0 {
 		parts = append(parts, fmt.Sprintf(
-			"%d more rest on one person who holds most of the work", more))
+			"%d more rest on one person who holds most of the work", c.BusOneShared))
 	}
 	if c.BusTwo > 0 {
 		parts = append(parts, fmt.Sprintf("%d rest on two", c.BusTwo))

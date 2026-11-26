@@ -14,20 +14,25 @@ import (
 )
 
 // TestExposures checks per-topic risk is read back as per-person risk, which is
-// the form the question gets asked in. A subject with one expert is theirs
-// alone; one they merely lead still has cover behind them.
+// the form the question gets asked in. A subject nobody else active is on
+// record for is theirs alone, one they lead still has cover behind them, and
+// one with no lead is attributed to nobody as leading.
 func TestExposures(t *testing.T) {
 	t.Parallel()
 	risks := []resolve.TopicRisk{
 		{Topic: "billing", Level: "critical", Experts: []resolve.RiskExpert{{ID: "a", Name: "Ada", Share: 1}}},
 		{Topic: "kafka", Level: "critical", Experts: []resolve.RiskExpert{{ID: "a", Name: "Ada", Share: 1}}},
-		{Topic: "payroll", Level: "elevated", Experts: []resolve.RiskExpert{
+		{Topic: "payroll", Level: "elevated", Lead: "Bo", LeadID: "b", Experts: []resolve.RiskExpert{
 			{ID: "b", Name: "Bo", Share: 0.7}, {ID: "a", Name: "Ada", Share: 0.3}}},
-		{Topic: "docs", Level: "ok", Experts: []resolve.RiskExpert{
+		{Topic: "docs", Level: "ok", Lead: "Bo", LeadID: "b", Experts: []resolve.RiskExpert{
 			{ID: "b", Name: "Bo", Share: 0.4}, {ID: "a", Name: "Ada", Share: 0.35}}},
+		{Topic: "ledger", Level: "critical", Lead: "Ada", LeadID: "a", Experts: []resolve.RiskExpert{
+			{ID: "a", Name: "Ada", Share: 0.9}, {ID: "g", Name: "Gone", Share: 0.1, Deactivated: true}}},
+		{Topic: "roadmap", Level: "elevated", Experts: []resolve.RiskExpert{
+			{ID: "c", Name: "Cy", Share: 0.6}, {ID: "b", Name: "Bo", Share: 0.4}}},
 	}
 	want := []Exposure{
-		{Name: "Ada", ID: "a", Sole: []string{"billing", "kafka"}},
+		{Name: "Ada", ID: "a", Sole: []string{"billing", "kafka", "ledger"}},
 		{Name: "Bo", ID: "b", Leading: []string{"payroll"}},
 	}
 	if diff := cmp.Diff(want, Exposures(risks), cmpopts.EquateEmpty()); diff != "" {

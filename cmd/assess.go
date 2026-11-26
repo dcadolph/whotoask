@@ -608,13 +608,13 @@ func reportAssess(
 		if f.Level == "critical" {
 			critical++
 		}
-		if len(f.Experts) == 1 {
+		if _, ok := f.SoleHolder(); ok {
 			sole++
 		}
 	}
 	fmt.Fprintf(log,
 		"assess: %d %s across %v; %d subjects scored, %d critical, "+
-			"%d with one person in the record; departure view for %d %s\n",
+			"%d with one active person in the record; departure view for %d %s\n",
 		model.PeopleCount(ix.Graph.People), people(model.PeopleCount(ix.Graph.People)), ix.SourceNames(),
 		len(findings), critical, sole, len(departures), people(len(departures)))
 	if len(split) > 0 {

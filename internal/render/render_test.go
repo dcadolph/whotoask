@@ -92,7 +92,8 @@ func goldenCases() []goldenCase {
 			Lead: "Lee Roe", LeadID: "lee",
 			Experts: []resolve.RiskExpert{
 				{ID: "lee", Name: "Lee Roe", Share: 0.6},
-				{ID: "ann", Name: "Ann Gone", Share: 0.4, Quiet: true, Deactivated: true},
+				{ID: "ann", Name: "Ann Gone", Share: 0.3, Quiet: true, Deactivated: true},
+				{ID: "dee", Name: "Dee Paper", Share: 0.1, Quiet: true, Declared: true},
 			}},
 		{Topic: "docs", Level: "ok", Concentration: 0, BusFactor: 4},
 	}
@@ -227,6 +228,10 @@ func goldenCases() []goldenCase {
 		{"risk_empty", func(w io.Writer, s Style) { RenderRisk(w, nil, s) }},
 		{"departure", func(w io.Writer, s Style) { RenderDeparture(w, "kim", departure, s) }},
 		{"departure_none", func(w io.Writer, s Style) { RenderDeparture(w, "zed", resolve.DepartureImpact{}, s) }},
+		{"departure_ambiguous", func(w io.Writer, s Style) {
+			RenderDeparture(w, "stan", resolve.DepartureImpact{Candidates: []resolve.RiskExpert{
+				{ID: "gibb@x.com", Name: "Stan Gibb"}, {ID: "lewis@x.com", Name: "Stan Lewis"}}}, s)
+		}},
 		{"departure_clear", func(w io.Writer, s Style) {
 			RenderDeparture(w, "lee", resolve.DepartureImpact{Person: "lee"}, s)
 		}},

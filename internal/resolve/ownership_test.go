@@ -9,9 +9,55 @@ import (
 	"github.com/dcadolph/whotoask/internal/index"
 )
 
+// TestOwnershipNamesTheRiskLead checks ownership, risk, and the directory name
+// the same lead for one subject. A broad colleague with more focused changes in
+// the area than its owner, the shape that once made ownership name somebody
+// other than the lead risk printed, must not be the actual owner, and the
+// owner of record who leads it holds it.
+func TestOwnershipNamesTheRiskLead(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		{Kind: connector.KindPerson, Name: "Owner", Email: "owner@x.com",
+			Topics: []string{"payments"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, Name: "Owner", Email: "owner@x.com",
+			Topics:       []string{"payments", "payments", "payments", "payments"},
+			DirectTopics: []string{"payments"}, Source: "git"},
+	}
+	crosser := connector.Record{Kind: connector.KindPerson, Name: "Crosser", Email: "crosser@x.com",
+		Topics:       []string{"payments", "payments", "payments"},
+		DirectTopics: []string{"payments", "payments", "payments"}, Source: "git"}
+	for i := range 60 {
+		crosser.Topics = append(crosser.Topics, fmt.Sprintf("area%d", i), fmt.Sprintf("area%d", i))
+	}
+	ix := index.New()
+	ix.Build(append(recs, crosser))
+	ix.Canonicalize()
+
+	lead := make(map[string]string)
+	for _, r := range Risk(ix, 0) {
+		lead[r.Topic] = r.Lead
+	}
+	if lead["payments"] != "Owner" {
+		t.Fatalf("risk lead for payments = %q, want Owner", lead["payments"])
+	}
+	for _, a := range OwnedAreas(ix) {
+		if a.Actual != lead[a.Topic] {
+			t.Errorf("%s: ownership actual %q, risk lead %q", a.Topic, a.Actual, lead[a.Topic])
+		}
+		if a.Topic == "payments" && a.Standing != StandingHeld {
+			t.Errorf("payments standing = %q, want held by its lead", a.Standing)
+		}
+	}
+	for _, row := range BuildDirectory(ix).Topics {
+		if row.Lead != lead[row.Name] {
+			t.Errorf("%s: directory lead %q, risk lead %q", row.Name, row.Lead, lead[row.Name])
+		}
+	}
+}
+
 // TestOwnershipDrift checks that a CODEOWNERS-declared owner who is not the
-// strongest actual expert is reported as drift, and that a declared owner who is
-// the top expert is not.
+// lead on record is reported as drift, and that a declared owner who is the
+// lead is not.
 func TestOwnershipDrift(t *testing.T) {
 	t.Parallel()
 	ix := index.New()

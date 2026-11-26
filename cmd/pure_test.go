@@ -48,13 +48,18 @@ func TestFactMentions(t *testing.T) {
 }
 
 // TestAttestPayload pins the sealed claim's shape: only critical topics count,
-// the top list caps at ten, and the lead falls back to the first person on record.
+// the top list caps at ten, and the lead is the lead on record, never the largest
+// share standing in for one.
 func TestAttestPayload(t *testing.T) {
 	t.Parallel()
 	report := make([]resolve.TopicRisk, 0, 13)
 	for i := 0; i < 12; i++ {
+		lead := ""
+		if i%2 == 0 {
+			lead = fmt.Sprintf("Lead %d", i)
+		}
 		report = append(report, resolve.TopicRisk{
-			Topic: fmt.Sprintf("area-%d", i), Level: "critical", BusFactor: 1,
+			Topic: fmt.Sprintf("area-%d", i), Level: "critical", BusFactor: 1, Lead: lead,
 			Experts: []resolve.RiskExpert{{Name: fmt.Sprintf("Expert %d", i)}},
 		})
 	}
@@ -73,8 +78,12 @@ func TestAttestPayload(t *testing.T) {
 		t.Fatalf("top_critical len = %d, want capped at 10", len(top))
 	}
 	first, ok := top[0].(map[string]any)
-	if !ok || first["lead"] != "Expert 0" {
-		t.Errorf("first lead = %v, want Expert 0", first["lead"])
+	if !ok || first["lead"] != "Lead 0" {
+		t.Errorf("first lead = %v, want Lead 0", first["lead"])
+	}
+	second, ok := top[1].(map[string]any)
+	if !ok || second["lead"] != "" {
+		t.Errorf("second lead = %v, want empty where the subject has no lead", second["lead"])
 	}
 	if m["single_holder"] != 12 {
 		t.Errorf("single_holder = %v, want 12: the payload must carry the plainest "+

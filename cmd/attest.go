@@ -205,11 +205,11 @@ func attestPayload(report []resolve.TopicRisk) any {
 		}
 		critical++
 		if len(top) < 10 {
-			lead := t.Lead
-			if lead == "" && len(t.Experts) > 0 {
-				lead = t.Experts[0].Name
-			}
-			top = append(top, map[string]any{"topic": t.Topic, "bus_factor": t.BusFactor, "lead": lead})
+			// The lead on record, the same person risk names, and empty where
+			// nobody has done work on the subject: the largest share is not a
+			// lead, and a sealed claim naming it as one would disagree with
+			// every other view of the same subject.
+			top = append(top, map[string]any{"topic": t.Topic, "bus_factor": t.BusFactor, "lead": t.Lead})
 		}
 	}
 	payload := map[string]any{

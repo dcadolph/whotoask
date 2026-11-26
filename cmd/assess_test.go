@@ -261,21 +261,34 @@ func TestAssessSummaryNumbersReconcile(t *testing.T) {
 		Level     string `json:"level"`
 		BusFactor int    `json:"busFactor"`
 		Experts   []struct {
-			ID string `json:"id"`
+			ID          string `json:"id"`
+			Deactivated bool   `json:"deactivated"`
 		} `json:"experts"`
 	}
 	readAssessJSON(t, filepath.Join(out, "findings.json"), &findings)
 
 	// Counted from the shipped file, then rendered through the same function
 	// the summary uses, so the test pins the numbers rather than the prose.
+	// Sole is one active person on record and nobody else, with a full list of
+	// five unable to say.
 	var c assessCounts
 	for _, f := range findings {
-		if len(f.Experts) == 1 {
+		active := 0
+		for _, e := range f.Experts {
+			if !e.Deactivated {
+				active++
+			}
+		}
+		sole := len(f.Experts) == 1 || (len(f.Experts) < 5 && active == 1)
+		if sole {
 			c.Sole++
 		}
 		switch f.BusFactor {
 		case 1:
 			c.BusOne++
+			if !sole {
+				c.BusOneShared++
+			}
 		case 2:
 			c.BusTwo++
 		}
@@ -313,7 +326,7 @@ func TestAssessSummaryNumbersReconcile(t *testing.T) {
 	}
 	if listed > c.Sole {
 		t.Errorf("departures.json lists %d sole subjects but only %d subjects have "+
-			"one person in the record", listed, c.Sole)
+			"one active person in the record", listed, c.Sole)
 	}
 }
 

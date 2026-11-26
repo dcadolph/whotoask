@@ -31,6 +31,13 @@ type RiskExpert struct {
 	// Quiet, but a closed account is a different fact from a pause in work and
 	// is said as itself.
 	Deactivated bool `json:"deactivated,omitempty"`
+	// Declared marks an expert whose whole share was assigned by a source of
+	// record, such as a CODEOWNERS line or an org chart's topics column, with
+	// no recorded work on the subject behind it. Their share still counts
+	// towards concentration, because the organization did name them, but they
+	// are never the lead and ownership finds no work by them, so the share is
+	// said for what it is rather than read as expertise.
+	Declared bool `json:"declared,omitempty"`
 }
 
 // TopicRisk is the knowledge-concentration risk for one topic: how few people
@@ -85,6 +92,37 @@ func (t TopicRisk) LeadQuiet() bool {
 	return false
 }
 
+// expertsShown is how many experts a finding keeps, largest share first.
+const expertsShown = 5
+
+// SoleHolder returns the one person still active on record for the subject,
+// and false when more than one is or the shortened list cannot tell.
+//
+// It reads who is on record, not who leads. A subject named only by a source
+// of record has no lead, and a subject whose lead is gone may have one person
+// left, and in both the person on record is the one the subject rests on.
+// Someone whose account is closed takes nothing with them when the remaining
+// person leaves, so they are not counted as cover. When everyone on record is
+// deactivated, a lone person still holds the subject alone.
+func (t TopicRisk) SoleHolder() (RiskExpert, bool) {
+	if len(t.Experts) == 1 {
+		return t.Experts[0], true
+	}
+	// A full list may have been cut short, and the people cut could be active.
+	if len(t.Experts) >= expertsShown {
+		return RiskExpert{}, false
+	}
+	var holder RiskExpert
+	active := 0
+	for _, e := range t.Experts {
+		if !e.Deactivated {
+			holder = e
+			active++
+		}
+	}
+	return holder, active == 1
+}
+
 // Risk scores knowledge concentration for every topic across the graph: it is
 // deterministic arithmetic over per-person topic affinity, no model required.
 // Results are risk-first; limit caps them, and a limit of zero or less returns
@@ -95,6 +133,7 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 	groups := topicGroups(ix)
 	byTopic := make(map[string]map[model.ID]float64)
 	aliases := make(map[string]map[string]bool)
+	worked := make(map[string]map[model.ID]bool)
 	// People and their subjects are walked in sorted order, and the shares are
 	// summed in sorted order below, because float addition is not associative
 	// and Go randomizes map iteration per process. Accumulated as the map
@@ -133,6 +172,15 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 				aliases[key] = make(map[string]bool)
 			}
 			m[id] += w
+			// Work is weight a source of record did not assign, the same rule
+			// leads and ownership read, so a share resting on a CODEOWNERS
+			// line alone is said to be declared rather than shown as work.
+			if w-p.Stated[tid] > 0 {
+				if worked[key] == nil {
+					worked[key] = make(map[model.ID]bool)
+				}
+				worked[key][id] = true
+			}
 			if string(tid) != key {
 				aliases[key][string(tid)] = true
 			}
@@ -150,6 +198,7 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 				ID: string(id), Name: personName(ix, id), Share: w,
 				Quiet:       hasMovedOn(ix, id, model.ID(topic)),
 				Deactivated: isDeactivated(ix, id),
+				Declared:    !worked[topic][id],
 			})
 		}
 		if total <= 0 {
@@ -179,8 +228,8 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			level = "elevated"
 		}
 		concentrated := level
-		if len(experts) > 5 {
-			experts = experts[:5]
+		if len(experts) > expertsShown {
+			experts = experts[:expertsShown]
 		}
 		includes := slices.Sorted(maps.Keys(aliases[topic]))
 		leadName, leadID := "", ""
@@ -217,16 +266,23 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 }
 
 // DepartureImpact is what the record shows resting on one person: the topics
-// where they are the only expert, and the topics where they rank first but
-// others remain.
+// where they are the only active person on record, and the topics they lead
+// where somebody active remains.
 type DepartureImpact struct {
-	// Person is the canonical id the query resolved to, empty when unmatched.
+	// Person is the canonical id the query resolved to, empty when unmatched
+	// or when the query could mean more than one person.
 	Person string `json:"person"`
 	// Name is the person's display name.
 	Name string `json:"name"`
-	// Sole are topics nobody else has any expertise in.
+	// Candidates are everyone an ambiguous query matched, by id order. Picking
+	// one of them silently reports what leaves with somebody the asker may not
+	// have meant, so the query is refused and the choice handed back.
+	Candidates []RiskExpert `json:"candidates,omitempty"`
+	// Sole are topics nobody else still active is on record for. See
+	// TopicRisk.SoleHolder.
 	Sole []string `json:"sole"`
-	// Top are topics where the person ranks first but others remain.
+	// Top are topics the person is the lead on record for, where somebody
+	// else active is also on record.
 	Top []string `json:"top"`
 	// Regions are the joined bodies of work they lead: subjects changed
 	// together where they lead every one. Losing one of these is not the same
@@ -274,8 +330,9 @@ func demoteSlightSubjects(risks []TopicRisk) {
 const minRisksToDemote = 12
 
 // Departure reports what leaves with the person matching query: the offboarding
-// view of Risk. It resolves the query by canonical id, then email, then a name
-// or id substring.
+// view of Risk. It resolves the query by canonical id, email, or full name,
+// then by a name or id substring, and refuses a query that matches more than
+// one person by listing them as Candidates.
 func Departure(ix *index.Index, query string) DepartureImpact {
 	return DepartureFrom(ix, Risk(ix, 0), Regions(ix, 0), query)
 }
@@ -287,18 +344,26 @@ func Departure(ix *index.Index, query string) DepartureImpact {
 func DepartureFrom(
 	ix *index.Index, findings []TopicRisk, regions []Region, query string,
 ) DepartureImpact {
-	pid := findPerson(ix, query)
-	imp := DepartureImpact{Person: string(pid)}
-	if pid == "" {
+	matches := findPeople(ix, query)
+	if len(matches) > 1 {
+		imp := DepartureImpact{}
+		for _, id := range matches {
+			imp.Candidates = append(imp.Candidates, RiskExpert{ID: string(id), Name: personName(ix, id)})
+		}
 		return imp
 	}
+	if len(matches) == 0 {
+		return DepartureImpact{}
+	}
+	pid := matches[0]
+	imp := DepartureImpact{Person: string(pid)}
 	if p := ix.Graph.People[pid]; p != nil {
 		imp.Name = p.Name
 	}
 	// Who leads a subject is not who has the most raw weight in it: the people
 	// who touch everything out-weigh every owner at once, and reading departure
 	// off that showed a maintainer losing one subject where they really lead
-	// nine. See leadOf.
+	// nine. See leads.
 	//
 	// Heaviest first, because prose only has room for the first few and every
 	// surface that prints this truncates. Ordered by name instead, a maintainer
@@ -306,14 +371,18 @@ func DepartureFrom(
 	// at-daily, at-hourly, at-midnight and at-monthly, four scheduling words out
 	// of an example directory, while the systems the company runs on sat in the
 	// "and 47 more".
+	//
+	// Being the only active person on record is read off who is on record, not
+	// off the lead: a subject only a source of record names has no lead, and
+	// keying this on the lead told the only person on record for it that they
+	// held nothing.
 	var sole, top []TopicRisk
 	for _, tr := range findings {
-		if len(tr.Experts) == 0 || model.ID(tr.LeadID) != pid {
+		if h, ok := tr.SoleHolder(); ok && model.ID(h.ID) == pid {
+			sole = append(sole, tr)
 			continue
 		}
-		if len(tr.Experts) == 1 {
-			sole = append(sole, tr)
-		} else {
+		if model.ID(tr.LeadID) == pid {
 			top = append(top, tr)
 		}
 	}
@@ -390,25 +459,33 @@ func personName(ix *index.Index, id model.ID) string {
 	return string(id)
 }
 
-// findPerson resolves a query to a canonical person id: an exact id or email
-// first, then the first person whose id, email, or name contains it.
-func findPerson(ix *index.Index, query string) model.ID {
+// findPeople resolves a query to every canonical person id it could mean, in
+// id order: an exact id, email, or full name first, and only when none of
+// those matches, everyone whose id, email, or name contains it. More than one
+// result means the query is ambiguous, which the caller must say rather than
+// settle by picking.
+func findPeople(ix *index.Index, query string) []model.ID {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
-		return ""
+		return nil
 	}
 	if _, ok := ix.Graph.People[model.ID(q)]; ok {
-		return model.ID(q)
+		return []model.ID{model.ID(q)}
 	}
-	var best model.ID
+	var out []model.ID
+	for _, p := range ix.FindPeople(q) {
+		out = append(out, p.ID)
+	}
+	if len(out) > 0 {
+		return out
+	}
 	for id, p := range ix.Graph.People {
 		if strings.Contains(strings.ToLower(string(id)), q) ||
 			strings.Contains(strings.ToLower(p.Email), q) ||
 			strings.Contains(strings.ToLower(p.Name), q) {
-			if best == "" || id < best {
-				best = id
-			}
+			out = append(out, id)
 		}
 	}
-	return best
+	slices.Sort(out)
+	return out
 }

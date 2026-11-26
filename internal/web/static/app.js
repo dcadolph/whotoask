@@ -1544,6 +1544,20 @@ async function checkDeparture(who) {
     return;
   }
   expDepResult.replaceChildren();
+  const candidates = imp.candidates || [];
+  if (!imp.person && candidates.length) {
+    // A name several people share is handed back rather than settled by
+    // picking one, because the answer is about a particular person.
+    expDepResult.appendChild(el("p", "exp-empty",
+      person + " matches " + candidates.length + " people. Pick one:"));
+    for (const c of candidates) {
+      const pick = el("button", "exp-name exp-name-btn", c.name + " (" + c.id + ")");
+      pick.type = "button";
+      pick.addEventListener("click", () => checkDeparture(c.id));
+      expDepResult.appendChild(pick);
+    }
+    return;
+  }
   if (!imp.person) {
     expDepResult.appendChild(el("p", "exp-empty", "Nobody in the graph matches " + person + "."));
     return;
@@ -1560,7 +1574,7 @@ async function checkDeparture(who) {
     expDepResult.appendChild(card);
     return;
   }
-  head.appendChild(el("span", "exp-bus", subjects(sole.length) + " alone on record, "
+  head.appendChild(el("span", "exp-bus", subjects(sole.length) + " alone among active people, "
     + subjects(top.length) + " as lead"));
   // What leaves with somebody is the one finding here that gets written down
   // somewhere else: a handover note, a succession conversation, a backfill
@@ -1569,7 +1583,7 @@ async function checkDeparture(who) {
   head.appendChild(copyButton(() => {
     const lines = ["If " + name + " is out"];
     if (sole.length) {
-      lines.push(name + " is the only person on record for " + subjects(sole.length)
+      lines.push(name + " is the only active person on record for " + subjects(sole.length)
         + ": " + sole.join(", ") + ".");
     }
     if (top.length) {
@@ -1581,7 +1595,7 @@ async function checkDeparture(who) {
   }, "copy handover"));
   card.appendChild(head);
   if (sole.length) {
-    card.appendChild(el("p", "exp-also", "Only person on record (" + sole.length + ")"));
+    card.appendChild(el("p", "exp-also", "Only active person on record (" + sole.length + ")"));
     chips(card, sole);
   }
   if (top.length) {
@@ -1742,6 +1756,9 @@ function riskCard(r) {
     name.title = "See what leaves with " + e.name;
     name.addEventListener("click", () => checkDeparture(e.id || e.name));
     row.appendChild(name);
+    // A share a source of record assigned is not work, and ownership says so;
+    // the row says the same rather than reading as expertise.
+    if (e.declared) row.appendChild(el("span", "sub", "declared, no work on record"));
     card.appendChild(row);
   }
   return card;

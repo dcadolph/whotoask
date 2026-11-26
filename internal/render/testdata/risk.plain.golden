@@ -8,7 +8,8 @@ CRITICAL
 ELEVATED
   kafka     60%  bus factor 2
        60% Lee Roe
-       40% Ann Gone  deactivated
+       30% Ann Gone  deactivated
+       10% Dee Paper  declared, no work on record
 
 OK
   docs        ~  bus factor 4
