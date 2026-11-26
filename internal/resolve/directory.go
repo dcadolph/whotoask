@@ -107,6 +107,7 @@ func BuildDirectory(ix *index.Index) Directory {
 
 	teamSize := make(map[model.ID]int)
 	topicSize := make(map[model.ID]int)
+	activeSize := make(map[model.ID]int)
 	// What each team's people work on, summed, so a team row can say what the
 	// team is about instead of only how many are in it.
 	teamWeight := make(map[model.ID]map[model.ID]float64)
@@ -159,6 +160,9 @@ func BuildDirectory(ix *index.Index) Directory {
 		}
 		for tid := range p.Topics {
 			topicSize[tid]++
+			if !p.Deactivated() {
+				activeSize[tid]++
+			}
 		}
 		d.People = append(d.People, row)
 	}
@@ -176,7 +180,9 @@ func BuildDirectory(ix *index.Index) Directory {
 		}
 		for _, name := range d.People[i].Topics {
 			tid := model.ID(name)
-			if topicSize[tid] == 1 {
+			// The same reading as risk's sole holder: a closed account is not
+			// cover, and when every holder is closed a lone one still holds it.
+			if topicSize[tid] == 1 || (!p.Deactivated() && activeSize[tid] == 1) {
 				d.People[i].Alone = append(d.People[i].Alone, name)
 			}
 			if hasMovedOn(ix, p.ID, tid) {

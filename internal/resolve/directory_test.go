@@ -80,10 +80,16 @@ func TestDirectoryMarksWhoHoldsSomethingAlone(t *testing.T) {
 		},
 		"bo@x.com": {
 			ID: "bo@x.com", Name: "Bo",
-			Topics: map[model.ID]float64{"billing": 3},
-			Recent: map[model.ID]float64{"billing": 3},
+			Topics: map[model.ID]float64{"billing": 3, "search": 2},
+			Recent: map[model.ID]float64{"billing": 3, "search": 2},
+		},
+		// Cy's account is closed, so Cy is no cover for Bo on search.
+		"cy@x.com": {
+			ID: "cy@x.com", Name: "Cy", Account: model.AccountDeactivated,
+			Topics: map[model.ID]float64{"search": 4},
 		},
 	}
+	ix.Graph.Topics["search"] = &model.Topic{ID: "search", Name: "search", Curated: true}
 	ix.Canonicalize()
 
 	d := BuildDirectory(ix)
@@ -98,9 +104,13 @@ func TestDirectoryMarksWhoHoldsSomethingAlone(t *testing.T) {
 	if diff := cmp.Diff([]string{"ledger"}, ada.Quiet, cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("Ada quiet (-want +got):\n%s", diff)
 	}
-	// Two people hold billing, so neither holds it alone.
-	if len(bo.Alone) != 0 {
-		t.Errorf("Bo alone = %v, want nothing: billing has two holders", bo.Alone)
+	// Two people hold billing, so neither holds it alone. The only other
+	// holder of search is deactivated, so Bo holds search alone and Cy does not.
+	if diff := cmp.Diff([]string{"search"}, bo.Alone, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("Bo alone (-want +got):\n%s", diff)
+	}
+	if cy := byName["Cy"]; len(cy.Alone) != 0 {
+		t.Errorf("Cy alone = %v, want nothing: Bo is still active on search", cy.Alone)
 	}
 	if len(bo.Quiet) != 0 {
 		t.Errorf("Bo quiet = %v, want nothing: Bo is still working on billing", bo.Quiet)

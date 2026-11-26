@@ -197,7 +197,7 @@ func attestPayload(report []resolve.TopicRisk) any {
 	critical, sole := 0, 0
 	var top []any
 	for _, t := range report {
-		if len(t.Experts) == 1 {
+		if _, ok := t.SoleHolder(); ok {
 			sole++
 		}
 		if t.Level != "critical" {
@@ -216,9 +216,8 @@ func attestPayload(report []resolve.TopicRisk) any {
 		"finding":       "knowledge concentration",
 		"topics_scored": len(report),
 		"critical":      critical,
-		// How many subjects have one person in the record and nobody else, which
-		// is the plainest reading of the finding and the one a reader counts for
-		// themselves out of the files beside the seal.
+		// How many subjects have one active person on record and nobody else
+		// active, the same count risk and the brief report give.
 		"single_holder": sole,
 		"top_critical":  top,
 	}
