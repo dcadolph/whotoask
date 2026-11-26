@@ -1,12 +1,14 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -54,12 +56,19 @@ func TestWalkIsIndependentOfWorkerCount(t *testing.T) {
 		}
 	}
 
-	read := func(workers int) []Record {
+	read := func(t *testing.T, workers int) []Record {
+		t.Helper()
+		var log bytes.Buffer
 		recs, err := NewGitHistory(GitOptions{
-			Paths: []string{dir}, SinceDays: 3650, Workers: workers,
+			Paths: []string{dir}, SinceDays: 3650, Workers: workers, Log: &log,
 		}).Fetch(context.Background())
 		if err != nil {
 			t.Fatalf("fetch with %d workers: %v", workers, err)
+		}
+		// A commit the walk could not read changes the answer for a reason
+		// that has nothing to do with the worker count, so say which.
+		if strings.Contains(log.String(), "could not be read") {
+			t.Fatalf("fetch with %d workers skipped commits:\n%s", workers, log.String())
 		}
 		sort.Slice(recs, func(i, j int) bool { return recs[i].Email < recs[j].Email })
 		for i := range recs {
@@ -69,13 +78,13 @@ func TestWalkIsIndependentOfWorkerCount(t *testing.T) {
 		return recs
 	}
 
-	want := read(1)
+	want := read(t, 1)
 	if len(want) != len(authors) {
 		t.Fatalf("read %d authors, want %d", len(want), len(authors))
 	}
 	for _, workers := range []int{2, 3, 8, 16} {
 		t.Run(fmt.Sprintf("%d workers", workers), func(t *testing.T) {
-			if diff := cmp.Diff(want, read(workers), cmpopts.EquateEmpty()); diff != "" {
+			if diff := cmp.Diff(want, read(t, workers), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("walking with %d workers differs from walking with one (-one +%d):\n%s",
 					workers, workers, diff)
 			}

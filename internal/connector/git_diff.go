@@ -56,6 +56,9 @@ func (g *GitHistory) diffCommits(
 	for _, t := range tallies {
 		read += t.read
 		skipped += t.skipped
+		if t.skipErr != nil && g.skipErrs[path] == nil {
+			g.skipErrs[path] = t.skipErr
+		}
 		g.mergePlaces(&t, path, label, scoped)
 		mergeSubjects(&t, counts, names, latest, curated, recent, direct, topicTimes, ties)
 	}
@@ -259,6 +262,7 @@ func (g *GitHistory) diffShare(
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
 		t.skipped = len(jobs)/workers + 1
+		t.skipErr = err
 		return t
 	}
 	defer func() { _ = closeRepo() }()
@@ -279,12 +283,12 @@ func (t *tally) walkJob(
 ) {
 	commit, err := repo.CommitObject(job.Hash)
 	if err != nil {
-		t.skipped++
+		t.skip(err)
 		return
 	}
 	paths, err := changedPaths(commit)
 	if err != nil {
-		t.skipped++
+		t.skip(err)
 		return
 	}
 	if job.Pull > 0 {
@@ -297,6 +301,14 @@ func (t *tally) walkJob(
 	t.read++
 	done.Add(1)
 	t.creditCommit(job, paths, path, now)
+}
+
+// skip counts one commit that could not be read and keeps the first reason.
+func (t *tally) skip(err error) {
+	t.skipped++
+	if t.skipErr == nil {
+		t.skipErr = err
+	}
 }
 
 // notePull records which directories a pull request's merge changed. A merge

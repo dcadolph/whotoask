@@ -1,9 +1,11 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -706,5 +708,43 @@ func TestDiffShareStops(t *testing.T) {
 					tl.read, tl.skipped, test.WantRead, test.WantSkipped)
 			}
 		})
+	}
+}
+
+// TestSkippedCommitsNameTheirError checks a commit the walk cannot read is
+// reported with the error that cost it, not only a guess at the cause. A guess
+// of "partial clone" hid a machine running out of open files, which looked the
+// same from the outside and called for a different fix.
+func TestSkippedCommitsNameTheirError(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--quiet", "-b", "main")
+	if err := os.MkdirAll(filepath.Join(dir, "billing"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "billing", "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	gitRun(t, dir, "add", ".")
+	gitRun(t, dir, "commit", "--quiet", "-m", "add billing")
+	// Remove the commit's tree, so the commit itself reads but its diff does not.
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD^{tree}").Output()
+	if err != nil {
+		t.Fatalf("rev-parse: %v", err)
+	}
+	tree := strings.TrimSpace(string(out))
+	if err := os.Remove(filepath.Join(dir, ".git", "objects", tree[:2], tree[2:])); err != nil {
+		t.Fatalf("remove tree: %v", err)
+	}
+
+	var log bytes.Buffer
+	_, _ = NewGitHistory(GitOptions{Paths: []string{dir}, SinceDays: 3650, Workers: 1, Log: &log}).
+		Fetch(context.Background())
+	if !strings.Contains(log.String(), "1 commits could not be read, first error: ") ||
+		!strings.Contains(log.String(), "object not found") {
+		t.Errorf("log does not name the skip and its error:\n%s", log.String())
 	}
 }

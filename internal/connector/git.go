@@ -105,6 +105,8 @@ type GitHistory struct {
 	// marks is the newest commit read per repository path, for the next run to
 	// stop at. Written during Fetch and read afterwards through Marks.
 	marks map[string]string
+	// skipErrs holds, per path, the first error that cost the walk a commit.
+	skipErrs map[string]error
 	// dirWork counts, per directory prefix and per author email, the commits
 	// that touched it, across every repository read. Read through DirWork.
 	dirWork map[string]map[string]float64
@@ -205,6 +207,7 @@ func (g *GitHistory) Marks() map[string]string { return g.marks }
 func NewGitHistory(opts GitOptions) *GitHistory {
 	return &GitHistory{
 		opts: opts.withDefaults(), marks: make(map[string]string),
+		skipErrs:       make(map[string]error),
 		dirWork:        make(map[string]map[string]float64),
 		workTotals:     make(map[string]float64),
 		pullDirs:       make(map[PullRef][]string),
@@ -288,9 +291,12 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		if skipped > 0 {
 			// One line, not one per commit. A partial clone makes every commit
 			// unreadable, and a message each would bury the run in its own log.
+			// The first error is named, since a guess at the cause would hide
+			// any other one, such as the machine running out of open files.
 			fmt.Fprintf(g.opts.Log,
-				"git: %s: %d commits could not be read, most likely a partial clone missing objects\n",
-				path, skipped)
+				"git: %s: %d commits could not be read, first error: %v. A partial clone "+
+					"missing objects looks like this. Otherwise read the index again\n",
+				path, skipped, g.skipErrs[path])
 		}
 	}
 	// A run where every path was skipped read nothing at all. Reporting that as

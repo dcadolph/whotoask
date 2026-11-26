@@ -619,6 +619,8 @@ type tally struct {
 	read int
 	// skipped is how many it could not diff.
 	skipped int
+	// skipErr is the first error that cost this worker a commit.
+	skipErr error
 }
 
 // commitSubject returns the first line of a commit message, the summary that
