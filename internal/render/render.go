@@ -206,9 +206,17 @@ func RenderStatus(w io.Writer, v map[string]any, s Style) {
 	if n := geti("deactivated"); n > 0 {
 		people += s.Dim(fmt.Sprintf(" including %d deactivated", n))
 	}
+	// CODEOWNERS groups are listed beside the teams in the directory, so they
+	// are counted here too, or the two would not add up.
+	teams := fmt.Sprintf("%d teams", geti("teams"))
+	if n := geti("codeowners_groups"); n > 0 {
+		teams += fmt.Sprintf(" · %d CODEOWNERS group", n)
+		if n != 1 {
+			teams += "s"
+		}
+	}
 	line("People", people+"  "+
-		s.Dim(fmt.Sprintf("%d teams · %d subjects · %d channels",
-			geti("teams"), geti("subjects"), geti("channels"))))
+		s.Dim(fmt.Sprintf("%s · %d subjects · %d channels", teams, geti("subjects"), geti("channels"))))
 	if bt := gets("built_at"); bt != "" {
 		when := bt
 		if t, err := time.Parse(time.RFC3339, bt); err == nil {

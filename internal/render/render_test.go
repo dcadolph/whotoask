@@ -167,7 +167,9 @@ func goldenCases() []goldenCase {
 			}, s)
 		}},
 		{"status_departed", func(w io.Writer, s Style) {
-			RenderStatus(w, map[string]any{"people": 220, "deactivated": 1, "teams": 13, "age": "0s"}, s)
+			RenderStatus(w, map[string]any{
+				"people": 220, "deactivated": 1, "teams": 13, "codeowners_groups": 3, "age": "0s",
+			}, s)
 		}},
 		{"near", func(w io.Writer, s Style) {
 			RenderNear(w, "Kim Doe", []index.Adjacent{
