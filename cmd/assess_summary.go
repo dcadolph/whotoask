@@ -253,7 +253,7 @@ func writeSystems(b *strings.Builder, places []resolve.Place) {
 				pl.Dir, strings.Join(names, ", "))
 			continue
 		}
-		fmt.Fprintf(b, "- %s: %d people in the record, %s. Most active: %s\n",
+		fmt.Fprintf(b, "- %s: %d people in the record, %s. On record: %s\n",
 			pl.Dir, pl.People, covers(pl.Bus), strings.Join(names, ", "))
 	}
 	if len(places) > len(fragile) {

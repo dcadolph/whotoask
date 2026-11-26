@@ -84,6 +84,10 @@ func TestWriteRiskIsSelfContained(t *testing.T) {
 			t.Errorf("report is missing %q", want)
 		}
 	}
+	// A person is described by the record, never by a number beside their name.
+	if strings.Contains(out, "Ada Lovelace (") {
+		t.Errorf("report prints a figure beside a person")
+	}
 	// A fetch of any kind means the report stops working the moment it is
 	// forwarded somewhere without the network it was written on.
 	for _, external := range []string{"src=\"http", "href=\"http", "@import", "fetch(", "XMLHttpRequest"} {
@@ -137,8 +141,8 @@ func TestWriteRiskSectionsFollowTheirContent(t *testing.T) {
 			Dir: "internal/billing", Work: 90, People: 7, Bus: 1,
 			Holders: []resolve.PlaceHolder{{ID: "a", Name: "Ada Lovelace", Work: 80, Share: 0.89}},
 		}}},
-		WantHas: []string{`id="systems"`, "internal/billing", "Ada Lovelace", "89%"},
-		WantNot: []string{`id="checks"`, `id="ramp"`, `id="identity"`},
+		WantHas: []string{`id="systems"`, "internal/billing", "Ada Lovelace"},
+		WantNot: []string{`id="checks"`, `id="ramp"`, `id="identity"`, "89%"},
 	}, { // Test 3: Checks render the command and the sentence that reads it.
 		Name: "checks",
 		In: Brief{Checks: []resolve.CheckCommand{{

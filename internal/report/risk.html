@@ -283,7 +283,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<td class="num">{{ .BusFactor }}</td>
 				<td class="num">{{ pct .Concentration }}</td>
 				<td>{{ if .Lead }}{{ .Lead }}{{ else }}&mdash;{{ end }}</td>
-				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }} ({{ pct $e.Share }}{{ if $e.Deactivated }}, deactivated{{ else if $e.Declared }}, declared, no work on record{{ else if $e.Quiet }}, no recent activity on record{{ end }}){{ end }}</td>
+				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }}{{ if $e.Deactivated }} (deactivated){{ else if $e.Declared }} (declared, no work on record){{ else if $e.Quiet }} (no recent activity on record){{ end }}{{ end }}</td>
 				<td class="also">{{ join .Includes }}</td>
 			</tr>
 		{{ end }}
@@ -335,7 +335,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<th data-sort="text">Directory <span class="arrow">&#9662;</span></th>
 				<th data-sort="num">People in the record <span class="arrow">&#9662;</span></th>
 				<th data-sort="num">Cover most of the work <span class="arrow">&#9662;</span></th>
-				<th data-sort="text">Most active</th>
+				<th data-sort="text">People on record</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -344,7 +344,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<td>{{ .Dir }}</td>
 				<td class="num">{{ .People }}</td>
 				<td class="num">{{ .Bus }}</td>
-				<td class="names">{{ range $i, $h := .Holders }}{{ if $i }}, {{ end }}{{ $h.Name }} ({{ pct $h.Share }}){{ end }}</td>
+				<td class="names">{{ range $i, $h := .Holders }}{{ if $i }}, {{ end }}{{ $h.Name }}{{ end }}</td>
 			</tr>
 		{{ end }}
 		</tbody>
