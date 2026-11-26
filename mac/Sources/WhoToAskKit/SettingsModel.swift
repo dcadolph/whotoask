@@ -169,7 +169,7 @@ public struct SourceAge: Equatable, Sendable, Identifiable {
 
     // rows groups scopes by source in name order. A source is as old as its oldest scope, and is
     // of unknown age when any scope is. A source whose every scope recorded what it found says
-    // so, from its newest run; one with a scope recorded before runs kept that says only
+    // so, from its newest run with the channels or repositories read added up across its scopes; one with a scope recorded before runs kept that says only
     // when it was indexed, never zeros. A sample source reads as loaded, not indexed. now is the
     // clock the ages were read at.
     public static func rows(_ scopes: [IndexScope], sample: Bool = false, now: Date) -> [SourceAge] {
@@ -179,7 +179,7 @@ public struct SourceAge: Equatable, Sendable, Identifiable {
             let oldest = group.map(\.ageSeconds).max() ?? 0
             var detail = known ? "\(verb) \(Age.words(oldest))." : "\(verb), time unknown."
             if !sample, group.allSatisfy({ $0.found != nil }),
-               let found = group.min(by: { $0.ageSeconds < $1.ageSeconds })?.found {
+               let found = Found.merged(group.sorted { $0.ageSeconds < $1.ageSeconds }.compactMap(\.found)) {
                 let ago = Age.words(oldest)
                 let when = known ? ago.prefix(1).uppercased() + ago.dropFirst() + "." : "Time unknown."
                 detail = "\(found.sentence(source)) \(when)"

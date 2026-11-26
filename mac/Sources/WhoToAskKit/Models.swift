@@ -45,17 +45,61 @@ public struct Found: Codable, Equatable, Sendable {
     public let people: Int
     // channels is how many channels the source holds after the run.
     public let channels: Int
+    // read is how many channels or repositories the run read to the end, nil from a core that
+    // did not report it.
+    public var read: Int? = nil
+    // skipped is how many channels or repositories the run could not read, nil when none.
+    public var skipped: Int? = nil
 
-    // who says whom the run found: "found 5 people in 1 channel", "found 1 person", or
-    // "found no one".
-    var who: String {
+    // who says whom source's run found: "found 5 people in 1 channel", "found 1 person", or
+    // "found no one". GitHub names the repositories it read, "found 30 people in 12
+    // repositories", and after a run that could not read every Slack channel or GitHub repository
+    // it names how many of them it read: "found 212 people in 38 of 40 channels".
+    func who(_ source: String) -> String {
         let found = people == 0 ? "found no one" : "found \(Count.words(people, "person", "people"))"
+        if let units = units(source) {
+            return "\(found) in \(units)"
+        }
         return channels > 0 ? "\(found) in \(Count.words(channels, "channel", "channels"))" : found
+    }
+
+    // units says how many channels or repositories of source the run read, "38 of 40 channels"
+    // after a skip, or "12 repositories" for a GitHub run that read every one. It is nil when the
+    // core did not report the count, when the run tried nothing, for a Slack run that read every
+    // channel, which keeps the channels its source holds, and for every other source.
+    func units(_ source: String) -> String? {
+        guard let read else { return nil }
+        let skipped = skipped ?? 0
+        let total = read + skipped
+        guard total > 0 else { return nil }
+        switch source {
+        case "slack":
+            return skipped > 0 ? "\(read) of \(Count.words(total, "channel", "channels"))" : nil
+        case "github":
+            let repos = Count.words(total, "repository", "repositories")
+            return skipped > 0 ? "\(read) of \(repos)" : repos
+        default:
+            return nil
+        }
+    }
+
+    // merged is the Found a card shows for a source read under several scopes, from each scope's
+    // latest run with the newest first. People and channels come from the newest run, which
+    // counts the whole source. Read and skipped add up across the scopes, so a skip in one scope
+    // is not hidden by a clean run of another, and read is unknown when any scope did not report
+    // it. Nil when there are no runs.
+    static func merged(_ newestFirst: [Found]) -> Found? {
+        guard var card = newestFirst.first else { return nil }
+        let reads = newestFirst.compactMap(\.read)
+        card.read = reads.count == newestFirst.count ? reads.reduce(0, +) : nil
+        card.skipped = newestFirst.reduce(0) { $0 + ($1.skipped ?? 0) }
+        return card
     }
 
     // sentence says what source's runs found as a sentence: "Read 58 repositories and found 1
     // person." for git, "Found 5 people in 1 channel." for the rest.
     func sentence(_ source: String) -> String {
+        let who = who(source)
         if source == "git" {
             return "Read \(Count.words(repos, "repository", "repositories")) and \(who)."
         }
@@ -497,9 +541,9 @@ public struct IndexResult: Codable, Sendable {
     public var finishLine: String {
         if let found {
             if source == "git" {
-                return "Git: read \(Count.words(found.repos, "repository", "repositories")) and \(found.who)."
+                return "Git: read \(Count.words(found.repos, "repository", "repositories")) and \(found.who(source))."
             }
-            return "\(SourceLabel.of(source)): \(found.who)."
+            return "\(SourceLabel.of(source)): \(found.who(source))."
         }
         let held = "The index holds \(Count.words(people, "person", "people"))."
         if source == "git" {
@@ -537,9 +581,10 @@ public struct RefreshScope: Codable, Sendable {
         guard ok else { return "\(name): \(error ?? "failed")." }
         guard let found else { return "\(name): refreshed." }
         if source == "git" {
-            return "\(name): read \(Count.words(found.repos, "repository", "repositories")) again and \(found.who)."
+            let repos = Count.words(found.repos, "repository", "repositories")
+            return "\(name): read \(repos) again and \(found.who(source))."
         }
-        return "\(name): refreshed and \(found.who)."
+        return "\(name): refreshed and \(found.who(source))."
     }
 }
 

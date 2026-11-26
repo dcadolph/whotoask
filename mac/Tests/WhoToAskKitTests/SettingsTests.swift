@@ -413,6 +413,25 @@ struct SettingsTests {
             scope("github", "org:b", age: 60, found: Found(repos: 0, people: 7, channels: 0)),
         ], now: now)
         #expect(same == [SourceAge(source: "github", detail: "Found 7 people. 1 hour ago.")])
+        let partial = SourceAge.rows([
+            scope("slack", "", age: 10800, found: Found(repos: 0, people: 212, channels: 40, read: 38, skipped: 2)),
+        ], now: now)
+        #expect(partial == [SourceAge(source: "slack", detail: "Found 212 people in 38 of 40 channels. 3 hours ago.")])
+        let orgs = SourceAge.rows([
+            scope("github", "org:a", age: 3600, found: Found(repos: 0, people: 20, channels: 0, read: 11, skipped: 1)),
+            scope("github", "org:b", age: 60, found: Found(repos: 0, people: 26, channels: 0, read: 8)),
+        ], now: now)
+        #expect(orgs == [SourceAge(source: "github", detail: "Found 26 people in 19 of 20 repositories. 1 hour ago.")])
+        let clean = SourceAge.rows([
+            scope("github", "org:a", age: 3600, found: Found(repos: 0, people: 20, channels: 0, read: 12)),
+            scope("github", "org:b", age: 60, found: Found(repos: 0, people: 26, channels: 0, read: 8)),
+        ], now: now)
+        #expect(clean == [SourceAge(source: "github", detail: "Found 26 people in 20 repositories. 1 hour ago.")])
+        let mixed = SourceAge.rows([
+            scope("github", "org:a", age: 3600, found: Found(repos: 0, people: 20, channels: 0, skipped: 1)),
+            scope("github", "org:b", age: 60, found: Found(repos: 0, people: 26, channels: 0, read: 8)),
+        ], now: now)
+        #expect(mixed == [SourceAge(source: "github", detail: "Found 26 people. 1 hour ago.")])
         let sample = SourceAge.rows([scope("slack", "sample", age: 0, found: Found(repos: 0, people: 5, channels: 1))],
                                     sample: true, now: now)
         #expect(sample == [SourceAge(source: "slack", detail: "Loaded just now.")])

@@ -170,7 +170,7 @@ struct DecodeTests {
         #expect((3599...3600).contains(git.ageSeconds))
         #expect(git.attemptedAt?.isEmpty == false)
         #expect(git.error == "repository not found")
-        #expect(git.found == Found(repos: 58, people: 1, channels: 0))
+        #expect(git.found == Found(repos: 58, people: 1, channels: 0, read: 0))
         let slack = try #require(got.scopes.last)
         #expect(slack.source == "slack")
         #expect(slack.ranAt == nil)
@@ -211,7 +211,7 @@ struct DecodeTests {
         #expect(got.scope.hasPrefix("repo:"))
         #expect(got.repos == 1)
         #expect(got.people == 2)
-        #expect(got.found == Found(repos: 1, people: 2, channels: 0))
+        #expect(got.found == Found(repos: 1, people: 2, channels: 0, read: 0))
         #expect(got.finishLine == "Git: read 1 repository and found 2 people.")
     }
 
@@ -232,12 +232,50 @@ struct DecodeTests {
         #expect(slack.finishLine == "Slack: found 5 people in 1 channel.")
     }
 
+    // partialRead decodes how many units a run read and skipped, reads an older record without
+    // them as unknown, names read of all tried for Slack and GitHub after a skip, and names the
+    // repositories a clean GitHub run read.
+    @Test func partialRead() throws {
+        let raw = #"{"repos":0,"people":212,"channels":40,"read":38,"skipped":2}"#
+        let slack: Found = try Core.decode(raw)
+        #expect(slack == Found(repos: 0, people: 212, channels: 40, read: 38, skipped: 2))
+        #expect(slack.sentence("slack") == "Found 212 people in 38 of 40 channels.")
+        let old: Found = try Core.decode(#"{"repos":0,"people":5,"channels":1}"#)
+        #expect(old.read == nil)
+        #expect(old.skipped == nil)
+        #expect(old.sentence("slack") == "Found 5 people in 1 channel.")
+        let whole = Found(repos: 0, people: 212, channels: 40, read: 40)
+        #expect(whole.sentence("slack") == "Found 212 people in 40 channels.")
+        let unknown = Found(repos: 0, people: 212, channels: 40, skipped: 2)
+        #expect(unknown.sentence("slack") == "Found 212 people in 40 channels.")
+        let github = Found(repos: 0, people: 30, channels: 0, read: 11, skipped: 1)
+        #expect(github.sentence("github") == "Found 30 people in 11 of 12 repositories.")
+        #expect(Found(repos: 0, people: 30, channels: 0, read: 12).sentence("github")
+            == "Found 30 people in 12 repositories.")
+        #expect(Found(repos: 0, people: 4, channels: 0, read: 1).sentence("github") == "Found 4 people in 1 repository.")
+        #expect(Found(repos: 0, people: 30, channels: 0).sentence("github") == "Found 30 people.")
+        #expect(Found(repos: 0, people: 0, channels: 0, read: 0).sentence("github") == "Found no one.")
+        let lone: Found = try Core.decode(#"{"repos":0,"people":0,"channels":0,"read":0,"skipped":1}"#)
+        #expect(lone.sentence("github") == "Found no one in 0 of 1 repository.")
+        #expect(Found(repos: 0, people: 9, channels: 1, read: 0, skipped: 1).sentence("slack")
+            == "Found 9 people in 0 of 1 channel.")
+        let jira = Found(repos: 0, people: 3, channels: 0, read: 1, skipped: 1)
+        #expect(jira.sentence("jira") == "Found 3 people.")
+        let git = Found(repos: 58, people: 1, channels: 0, read: 0, skipped: 2)
+        #expect(git.sentence("git") == "Read 58 repositories and found 1 person.")
+        let index = IndexResult(source: "slack", scope: "workspace:T1", repos: 0, people: 212, log: "",
+                                found: slack)
+        #expect(index.finishLine == "Slack: found 212 people in 38 of 40 channels.")
+        let again = RefreshScope(source: "github", scope: "org:a", ranAt: "", ok: true, error: nil, found: github)
+        #expect(again.line == "GitHub: refreshed and found 30 people in 11 of 12 repositories.")
+    }
+
     // refresh decodes each scope's outcome.
     @Test func refresh() throws {
         let got: RefreshResult = try Core.decode(fixture("refresh"))
         #expect(got.ok)
         #expect(got.results.first?.ranAt.isEmpty == false)
-        #expect(got.results.first?.found == Found(repos: 1, people: 2, channels: 0))
+        #expect(got.results.first?.found == Found(repos: 1, people: 2, channels: 0, read: 0))
         #expect(got.results.first?.line == "Git: read 1 repository again and found 2 people.")
     }
 
