@@ -93,7 +93,8 @@ type JSONTeam struct {
 	Topics []string `json:"topics,omitempty"`
 	// Score is the relevance score among the teams.
 	Score float64 `json:"score"`
-	// Strength is how strongly the team matches, from zero to one.
+	// Strength is how strongly the team matches, from zero to one, never higher
+	// than the strength of the team above it.
 	Strength float64 `json:"strength,omitempty"`
 	// Reasons explains why the team matched.
 	Reasons []string `json:"reasons,omitempty"`
@@ -125,7 +126,7 @@ type JSONPerson struct {
 	Score float64 `json:"score"`
 	// Strength is how strongly this result matches, from zero to one. It is
 	// deterministic scoring, not a probability, which is why it is not called
-	// a confidence.
+	// a confidence. It is never higher than the strength of the row above.
 	// Zero means unknown and is omitted.
 	Strength float64 `json:"strength,omitempty"`
 	// Reasons explains why the person matched.
@@ -144,7 +145,7 @@ type JSONChannel struct {
 	Score float64 `json:"score"`
 	// Strength is how strongly this result matches, from zero to one. It is
 	// deterministic scoring, not a probability, which is why it is not called
-	// a confidence.
+	// a confidence. It is never higher than the strength of the row above.
 	// Zero means unknown and is omitted.
 	Strength float64 `json:"strength,omitempty"`
 	// Reasons explains why the channel matched.
@@ -283,20 +284,26 @@ func (a Answer) personView(m model.Match) JSONPerson {
 	return jp
 }
 
-// View renders the answer as a flat JSONAnswer for the given query.
+// View renders the answer as a flat JSONAnswer for the given query. A row with
+// no reason is left out, since nothing in the record says why it is there, and
+// each list's strength is capped to its order, whichever resolver set that
+// order: a name asked outright, a model, or a fusion of meaning and words.
 func (a Answer) View(query string) JSONAnswer {
 	out := JSONAnswer{
 		Query:   query,
 		Summary: a.Summary,
 		People:  make([]JSONPerson, 0, len(a.People)),
 	}
-	for _, m := range a.People {
+	for _, m := range explained(a.People) {
 		out.People = append(out.People, a.personView(m))
 	}
-	for _, m := range a.Departed {
+	for _, m := range explained(a.Departed) {
 		out.Departed = append(out.Departed, a.personView(m))
 	}
 	for _, c := range a.Channels {
+		if len(c.Reasons) == 0 {
+			continue
+		}
 		jc := JSONChannel{
 			Name:     c.Channel.Name,
 			Topic:    c.Channel.Topic,
@@ -310,7 +317,7 @@ func (a Answer) View(query string) JSONAnswer {
 		}
 		out.Channels = append(out.Channels, jc)
 	}
-	for _, m := range a.Teams {
+	for _, m := range explained(a.Teams) {
 		jt := JSONTeam{
 			ID:       string(m.Person.ID),
 			Name:     nameOr(m.Person.Name, string(m.Person.ID)),
@@ -323,6 +330,21 @@ func (a Answer) View(query string) JSONAnswer {
 			jt.Team = m.Team.Name
 		}
 		out.Teams = append(out.Teams, jt)
+	}
+	index.CapStrength(out.People, func(p *JSONPerson) *float64 { return &p.Strength })
+	index.CapStrength(out.Departed, func(p *JSONPerson) *float64 { return &p.Strength })
+	index.CapStrength(out.Channels, func(c *JSONChannel) *float64 { return &c.Strength })
+	index.CapStrength(out.Teams, func(t *JSONTeam) *float64 { return &t.Strength })
+	return out
+}
+
+// explained returns the matches that carry at least one reason, in order.
+func explained(matches []model.Match) []model.Match {
+	out := make([]model.Match, 0, len(matches))
+	for _, m := range matches {
+		if len(m.Reasons) > 0 {
+			out = append(out, m)
+		}
 	}
 	return out
 }

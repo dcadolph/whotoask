@@ -35,7 +35,7 @@ func TestRenderEscapesIndexedText(t *testing.T) {
 	render.RenderRisk(&b, []resolve.TopicRisk{{
 		Topic: "billing", Level: "critical", BusFactor: 1, Concentration: 1,
 		Experts: []resolve.RiskExpert{{Name: hostile, Share: 1}},
-	}}, style{})
+	}}, 0, style{})
 	if got := b.String(); strings.ContainsRune(got, '\x1b') {
 		t.Errorf("renderRisk let a raw escape through: %q", got)
 	}

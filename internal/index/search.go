@@ -172,18 +172,57 @@ func matchedBeyondTies(matched map[string]bool, asked map[string]string) bool {
 }
 
 // coveredShare is how much of the asked question a match answered: the share of
-// original terms covered by anything it matched, synonyms included.
-func coveredShare(matched map[string]bool, covers map[string][]string, originals int) float64 {
+// original terms covered by anything it matched, synonyms included. A subject
+// that only travels with the one asked covers no word, since it is a different
+// subject, but it is why the match was listed, so each asked word of the
+// subject it travels with earns the tie discount rather than nothing. Without
+// that, a match listed for its reach reported a strength of zero, which reads as
+// a row nothing explains.
+func coveredShare(
+	matched map[string]bool, covers map[string][]string, asked map[string]string, originals int,
+) float64 {
 	if originals == 0 {
 		return 0
 	}
 	hit := make(map[string]bool, originals)
+	reached := make(map[string]bool)
 	for term := range matched {
 		for _, orig := range covers[term] {
 			hit[orig] = true
 		}
+		origin, tied := strings.CutPrefix(asked[term], tieAskedPrefix)
+		if !tied {
+			continue
+		}
+		for _, word := range tokenize(strings.ReplaceAll(origin, "-", " ")) {
+			if _, typed := covers[word]; typed && asked[word] == "" {
+				reached[word] = true
+			}
+		}
 	}
-	return float64(len(hit)) / float64(originals)
+	// Counted rather than summed, so the share is the same bits in any map order.
+	ties := 0
+	for word := range reached {
+		if !hit[word] {
+			ties++
+		}
+	}
+	return (float64(len(hit)) + tieExpansionPenalty*float64(ties)) / float64(originals)
+}
+
+// CapStrength holds the strength of each item in a ranked list at or below the
+// strength of the item above it, so the list never reads as stronger further
+// down than the order placed it. The order weighs how much work stands behind
+// a match and how recent it is, while strength grades only the kind of field
+// each asked word hit and how much of the question it covered; where the two
+// disagree, the order is the judgment the list was built on, and a row keeps
+// its own strength only while that is no higher than the row before it.
+func CapStrength[T any](items []T, strength func(*T) *float64) {
+	for i := 1; i < len(items); i++ {
+		if prev, cur := strength(&items[i-1]), strength(&items[i]); *cur > *prev {
+			*cur = *prev
+		}
+	}
 }
 
 // Search ranks people for query and returns up to limit matches. A non-positive
@@ -295,7 +334,8 @@ func (ix *Index) SearchSplit(query string, limit int) (people, departed []model.
 	// limit. Each reason stems the person's whole topic set against every query
 	// term, so doing it for every candidate before ranking was the query's cost,
 	// and only the returned people need it. Strength does not affect the
-	// ranking, which is by score, so deferring it changes no result.
+	// ranking, which is by score, so deferring it changes no result; each list
+	// then caps it to its own order.
 	explain := func(list []model.Match) {
 		for i := range list {
 			pid := list[i].Person.ID
@@ -308,10 +348,11 @@ func (ix *Index) SearchSplit(query string, limit int) (people, departed []model.
 				reasons = append(reasons, personVoteReason)
 			}
 			list[i].Reasons = reasons
-			list[i].Strength = e.shown * coveredShare(matched[pid], covers, originals)
+			list[i].Strength = e.shown * coveredShare(matched[pid], covers, asked, originals)
 			list[i].Declared = e.evidence > evidenceTeam
 			list[i].Reach = !matchedBeyondTies(matched[pid], asked)
 		}
+		CapStrength(list, matchStrength)
 	}
 	explain(people)
 	explain(departed)
@@ -405,7 +446,7 @@ func (ix *Index) rankChannels(query string, limit int) ([]model.ChannelMatch, []
 			sc *= ix.feedbackFactor(net)
 			reasons = append(reasons, feedbackReason(net))
 		}
-		coverage := coveredShare(matched[cid], covers, originals)
+		coverage := coveredShare(matched[cid], covers, asked, originals)
 		matches = append(matches, model.ChannelMatch{
 			Channel:  ch,
 			Score:    sc,
@@ -429,8 +470,15 @@ func (ix *Index) rankChannels(query string, limit int) ([]model.ChannelMatch, []
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]
 	}
+	CapStrength(matches, channelStrength)
 	return matches, terms
 }
+
+// matchStrength returns the strength field of a person or team match.
+func matchStrength(m *model.Match) *float64 { return &m.Strength }
+
+// channelStrength returns the strength field of a channel match.
+func channelStrength(m *model.ChannelMatch) *float64 { return &m.Strength }
 
 // fillTopMembers sets the most relevant active members on each of matches in
 // place, from person scores for terms. It runs only on the channels a caller

@@ -72,12 +72,16 @@ Examples:
 					renderNotFor(w, s)
 				})
 			}
-			report := resolve.Risk(ix, limit)
+			// Every topic is scored and counted, and only the listing is cut to
+			// the limit, so the count matches the web view and the brief.
+			all := resolve.Risk(ix, 0)
 			regions := resolve.Regions(ix, regionsShown)
 			spans := resolve.SoleSpans(ix, spansShown)
-			view := map[string]any{"topics": report, "regions": regions, "spans": spans}
+			view := map[string]any{
+				"topics": resolve.Cap(all, limit), "scored": len(all), "regions": regions, "spans": spans,
+			}
 			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
-				render.RenderRisk(w, report, s)
+				render.RenderRisk(w, all, limit, s)
 				render.RenderRegions(w, regions, s)
 				render.RenderSpans(w, spans, s)
 				renderNotFor(w, s)

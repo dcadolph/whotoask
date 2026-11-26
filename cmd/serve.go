@@ -371,7 +371,7 @@ func cliFn(ix *index.Index, ask web.AskFunc, sealer web.AttestFunc) web.CLIFunc 
 			}
 			render.RenderAsk(&b, cliAskQuery, answer.View(cliAskQuery), plain)
 		case "risk":
-			render.RenderRisk(&b, resolve.Risk(ix, 12), plain)
+			render.RenderRisk(&b, resolve.Risk(ix, 0), 12, plain)
 		case "ownership":
 			render.RenderOwnership(&b, resolve.Ownership(ix), plain)
 		case "related":

@@ -42,12 +42,12 @@ func goldenCases() []goldenCase {
 			{Name: "Kim Doe", Title: "Staff Engineer", Team: "Payments", Strength: 0.92,
 				Reasons: []string{"commits to billing", "answers in #payments"}},
 			{Name: "Lee Roe", Team: "Payments", Strength: 0.4, Reasons: []string{"mentioned in docs"}},
-			{Name: "Sam Poe", Title: "Manager", Strength: 0, Reasons: nil},
+			{Name: "Sam Poe", Title: "Manager", Strength: 0.25, Reasons: []string{"billing (mention)"}},
 		},
 		Channels: []resolve.JSONChannel{
 			{Name: "payments", URL: "https://chat.example.com/payments", Strength: 0.7,
 				Reasons: []string{"active on billing"}},
-			{Name: "billing-alerts", Strength: 0.2},
+			{Name: "billing-alerts", Strength: 0.2, Reasons: []string{"billing (mention)"}},
 		},
 	}
 	directory := resolve.Directory{
@@ -224,8 +224,9 @@ func goldenCases() []goldenCase {
 			}, s)
 		}},
 		{"search_empty", func(w io.Writer, s Style) { RenderSearch(w, "zzz", nil, s) }},
-		{"risk", func(w io.Writer, s Style) { RenderRisk(w, risk, s) }},
-		{"risk_empty", func(w io.Writer, s Style) { RenderRisk(w, nil, s) }},
+		{"risk", func(w io.Writer, s Style) { RenderRisk(w, risk, 0, s) }},
+		{"risk_capped", func(w io.Writer, s Style) { RenderRisk(w, risk, 2, s) }},
+		{"risk_empty", func(w io.Writer, s Style) { RenderRisk(w, nil, 0, s) }},
 		{"departure", func(w io.Writer, s Style) { RenderDeparture(w, "kim", departure, s) }},
 		{"departure_none", func(w io.Writer, s Style) { RenderDeparture(w, "zed", resolve.DepartureImpact{}, s) }},
 		{"departure_ambiguous", func(w io.Writer, s Style) {

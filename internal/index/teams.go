@@ -102,7 +102,7 @@ func (ix *Index) SearchTeams(query string, limit int) []model.Match {
 		matches = append(matches, model.Match{
 			Person:   p,
 			Score:    sc * evidenceBoost(evidence),
-			Strength: evidence * coveredShare(matched[id], covers, originals),
+			Strength: evidence * coveredShare(matched[id], covers, asked, originals),
 			Declared: true,
 			Reasons:  reasons,
 		})
@@ -121,6 +121,7 @@ func (ix *Index) SearchTeams(query string, limit int) []model.Match {
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]
 	}
+	CapStrength(matches, matchStrength)
 	return matches
 }
 

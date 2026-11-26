@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,9 +89,8 @@ func nameWidth[T any](rows []T, name func(T) string) int {
 }
 
 // RenderAsk prints an answer as aligned rows, best match first, with the
-// reasons each surfaced dimmed beneath. People and teams carry no strength bar:
-// their order and their match strength come from different numbers, so a bar
-// could say a row below outmatches the row above it. Every indexed string is
+// reasons each surfaced dimmed beneath. People and teams carry no strength bar,
+// since the order already says which match is best. Every indexed string is
 // escaped on its way to the terminal, since names and reasons come from
 // sources third parties control.
 func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
@@ -115,12 +113,16 @@ func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
 		}
 		fmt.Fprintf(w, "  %s\n\n", s.Dim(title))
 	}
-	// The departed close the people list rather than open a section of their
-	// own, so the order reads as one list with them at the bottom.
-	if people := slices.Concat(view.People, view.Departed); len(people) > 0 {
-		section("PEOPLE")
-		width := nameWidth(people, func(p resolve.JSONPerson) string { return p.Name })
-		for _, p := range people {
+	// The departed are ranked apart and cut to the limit apart, as the JSON
+	// keeps them, so they print as their own section rather than as extra rows
+	// past the limit of the people list.
+	people := func(title string, list []resolve.JSONPerson) {
+		if len(list) == 0 {
+			return
+		}
+		section(title)
+		width := nameWidth(list, func(p resolve.JSONPerson) string { return p.Name })
+		for _, p := range list {
 			name := EscapeControls(p.Name)
 			role := EscapeControls(joinRole(p.Title, p.Team))
 			if p.Deactivated {
@@ -131,6 +133,8 @@ func RenderAsk(w io.Writer, query string, view resolve.JSONAnswer, s Style) {
 			fmt.Fprintln(w)
 		}
 	}
+	people("PEOPLE", view.People)
+	people("DEPARTED", view.Departed)
 	if len(view.Channels) > 0 {
 		section("CHANNELS")
 		for _, ch := range view.Channels {
@@ -635,15 +639,19 @@ func searchNameWidth(results []resolve.SearchResult) int {
 func Plural(n int) string { return Plural2(n, "", "s") }
 
 // RenderRisk prints the knowledge-concentration report, most at-risk first, with
-// each topic's bus factor and the people on record for it.
-func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
-	if len(topics) == 0 {
+// each topic's bus factor and the people on record for it. The headline counts
+// every scored topic in all, so it reads the same as the web view and the brief
+// whatever the limit, and the list below it holds the first limit of them. A
+// non-positive limit lists every one.
+func RenderRisk(w io.Writer, all []resolve.TopicRisk, limit int, s Style) {
+	if len(all) == 0 {
 		fmt.Fprintln(w, s.Dim(
 			"No topics scored yet. Index a source that records work on subjects first."))
 		return
 	}
+	topics := resolve.Cap(all, limit)
 	crit, gone := 0, 0
-	for _, t := range topics {
+	for _, t := range all {
 		if t.Level == "critical" {
 			crit++
 		}
@@ -654,9 +662,12 @@ func RenderRisk(w io.Writer, topics []resolve.TopicRisk, s Style) {
 			gone++
 		}
 	}
-	head := fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(topics), crit)
+	head := fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(all), crit)
 	if gone > 0 {
 		head += fmt.Sprintf(", %d whose lead on record has no recent activity on it", gone)
+	}
+	if len(topics) < len(all) {
+		head += fmt.Sprintf(", the %d most at risk shown", len(topics))
 	}
 	fmt.Fprintln(w, s.Bold(head))
 	width := riskTopicWidth(topics)

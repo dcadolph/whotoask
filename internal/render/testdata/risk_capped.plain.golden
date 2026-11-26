@@ -1,0 +1,12 @@
+Knowledge risk  3 topics scored, 1 critical, 1 whose lead on record has no recent activity on it, the 2 most at risk shown
+
+CRITICAL
+  billing   95%  bus factor 1
+      also called invoicing
+       95% Kim Doe  no recent activity on record
+
+ELEVATED
+  kafka     60%  bus factor 2
+       60% Lee Roe
+       30% Ann Gone  deactivated
+       10% Dee Paper  declared, no work on record

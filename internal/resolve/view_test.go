@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/dcadolph/whotoask/internal/connector"
 	"github.com/dcadolph/whotoask/internal/index"
@@ -71,7 +72,7 @@ func TestPersonViewReachable(t *testing.T) {
 		if p == nil {
 			t.Fatalf("fixture: %s not found", id)
 		}
-		return model.Match{Person: p}
+		return model.Match{Person: p, Reasons: []string{"billing (topic)"}}
 	}
 	ans := Answer{
 		ix:       ix,
@@ -144,6 +145,88 @@ func TestProfileViewLinks(t *testing.T) {
 			}
 			if test.WantLinks == nil && strings.Contains(string(raw), `"links"`) {
 				t.Errorf("profile with no links still has the field: %s", raw)
+			}
+		})
+	}
+}
+
+// TestViewStrengthFollowsOrder verifies every list in the view reads no
+// stronger further down than its order, whatever resolver set that order, and
+// that a row with no reason is left out rather than listed unexplained.
+func TestViewStrengthFollowsOrder(t *testing.T) {
+	t.Parallel()
+	person := func(id string, strength float64, reasons ...string) model.Match {
+		return model.Match{Person: &model.Person{ID: model.ID(id), Name: id}, Strength: strength, Reasons: reasons}
+	}
+	channel := func(name string, strength float64, reasons ...string) model.ChannelMatch {
+		return model.ChannelMatch{
+			Channel: &model.Channel{ID: model.ID(name), Name: name}, Strength: strength, Reasons: reasons,
+		}
+	}
+	tests := []struct {
+		In            Answer
+		WantPeople    []float64
+		WantDeparted  []float64
+		WantChannels  []float64
+		WantTeams     []float64
+		WantPeopleIDs []string
+	}{{ // Test 0: A named person first, then a stronger subject match held to it.
+		In: Answer{People: []model.Match{
+			person("named", 0.9, "name"), person("owner", 1, "billing (topic)"),
+			person("mention", 0.5, "billing (mention)"),
+		}},
+		WantPeople: []float64{0.9, 0.9, 0.5}, WantPeopleIDs: []string{"named", "owner", "mention"},
+	}, { // Test 1: A row with no reason is left out, and the rest keep their order.
+		In: Answer{People: []model.Match{
+			person("owner", 1, "billing (topic)"), person("unexplained", 0), person("mention", 0.5, "billing (mention)"),
+		}},
+		WantPeople: []float64{1, 0.5}, WantPeopleIDs: []string{"owner", "mention"},
+	}, { // Test 2: Departed, channels, and teams are each held to their own order.
+		In: Answer{
+			Departed: []model.Match{person("gone", 0.5, "billing (topic)"), person("gone2", 1, "billing (topic)")},
+			Channels: []model.ChannelMatch{
+				channel("payments", 0.5, "billing (topic)"), channel("billing", 1, "billing (name)"),
+				channel("quiet", 0.2),
+			},
+			Teams: []model.Match{person("team:a", 0.7, "billing (topic)"), person("team:b", 1, "billing (topic)")},
+		},
+		WantPeople: []float64{}, WantDeparted: []float64{0.5, 0.5}, WantChannels: []float64{0.5, 0.5},
+		WantTeams: []float64{0.7, 0.7}, WantPeopleIDs: []string{},
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			view := test.In.View("billing")
+			strengths := func(n int, at func(int) float64) []float64 {
+				out := make([]float64, n)
+				for i := range out {
+					out[i] = at(i)
+				}
+				return out
+			}
+			ids := make([]string, len(view.People))
+			for i, p := range view.People {
+				ids[i] = p.ID
+			}
+			empty := cmpopts.EquateEmpty()
+			if diff := cmp.Diff(test.WantPeopleIDs, ids, empty); diff != "" {
+				t.Errorf("people mismatch (-want +got):\n%s", diff)
+			}
+			got := strengths(len(view.People), func(i int) float64 { return view.People[i].Strength })
+			if diff := cmp.Diff(test.WantPeople, got, empty); diff != "" {
+				t.Errorf("people strength mismatch (-want +got):\n%s", diff)
+			}
+			got = strengths(len(view.Departed), func(i int) float64 { return view.Departed[i].Strength })
+			if diff := cmp.Diff(test.WantDeparted, got, empty); diff != "" {
+				t.Errorf("departed strength mismatch (-want +got):\n%s", diff)
+			}
+			got = strengths(len(view.Channels), func(i int) float64 { return view.Channels[i].Strength })
+			if diff := cmp.Diff(test.WantChannels, got, empty); diff != "" {
+				t.Errorf("channel strength mismatch (-want +got):\n%s", diff)
+			}
+			got = strengths(len(view.Teams), func(i int) float64 { return view.Teams[i].Strength })
+			if diff := cmp.Diff(test.WantTeams, got, empty); diff != "" {
+				t.Errorf("team strength mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

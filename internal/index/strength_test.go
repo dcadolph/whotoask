@@ -2,6 +2,7 @@ package index
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -162,6 +163,110 @@ func TestStrengthMarksDownACorrectedWord(t *testing.T) {
 			if declared != test.WantDeclared {
 				t.Errorf("declared = %v, want %v", declared, test.WantDeclared)
 			}
+		})
+	}
+}
+
+// TestCapStrength checks a ranked list never reads as stronger further down
+// than the order placed it, and that a row keeps its own strength while that is
+// no higher than the row above.
+func TestCapStrength(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In         []float64
+		WantResult []float64
+	}{{ // Test 0: Nothing to cap.
+		In: nil, WantResult: nil,
+	}, { // Test 1: One row keeps its strength.
+		In: []float64{0.5}, WantResult: []float64{0.5},
+	}, { // Test 2: A falling list is left alone.
+		In: []float64{1, 0.85, 0.5}, WantResult: []float64{1, 0.85, 0.5},
+	}, { // Test 3: A stronger row below a weaker one is held to it.
+		In: []float64{0.5, 0.85, 0.43}, WantResult: []float64{0.5, 0.5, 0.43},
+	}, { // Test 4: The hold carries down a run of stronger rows.
+		In: []float64{0.5, 1, 0.85, 0.25}, WantResult: []float64{0.5, 0.5, 0.5, 0.25},
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := slices.Clone(test.In)
+			CapStrength(got, func(f *float64) *float64 { return f })
+			if diff := cmp.Diff(test.WantResult, got, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestCoveredShare checks how much of a question a match is credited with: a
+// word asked or its synonym covers that word, and a subject that only travels
+// with the one asked earns the tie discount on the asked words of that subject.
+func TestCoveredShare(t *testing.T) {
+	t.Parallel()
+	covers := map[string][]string{
+		"billing": {"billing"}, "retries": {"retries"}, "invoices": {"billing"}, "kafka": nil,
+	}
+	asked := map[string]string{"invoices": "billing", "kafka": tieAskedPrefix + "billing-retries"}
+	tests := []struct {
+		Matched    []string
+		WantResult float64
+	}{{ // Test 0: Every word asked.
+		Matched: []string{"billing", "retries"}, WantResult: 1,
+	}, { // Test 1: Half the words asked.
+		Matched: []string{"retries"}, WantResult: 0.5,
+	}, { // Test 2: A synonym covers the word it stands for.
+		Matched: []string{"invoices", "retries"}, WantResult: 1,
+	}, { // Test 3: Only a tied subject earns the discount on every word it travels with.
+		Matched: []string{"kafka"}, WantResult: tieExpansionPenalty,
+	}, { // Test 4: A word asked outright is not marked down by a tie beside it.
+		Matched: []string{"billing", "kafka"}, WantResult: (1 + tieExpansionPenalty) / 2,
+	}, { // Test 5: Nothing matched covers nothing.
+		Matched: nil, WantResult: 0,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			matched := make(map[string]bool, len(test.Matched))
+			for _, term := range test.Matched {
+				matched[term] = true
+			}
+			got := coveredShare(matched, covers, asked, 2)
+			if diff := cmp.Diff(test.WantResult, got, cmpopts.EquateApprox(0, 1e-9)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestReachStrength checks a person listed only for a subject that travels with
+// the one asked carries a strength rather than zero, below the person who holds
+// the subject asked. A zero read as a row nothing explains.
+func TestReachStrength(t *testing.T) {
+	t.Parallel()
+	ix := tieFixture(t)
+	tests := []struct {
+		Person       string
+		WantStrength float64
+	}{{ // Test 0: The owner of the subject asked.
+		Person: "billing@corp.com", WantStrength: 1,
+	}, { // Test 1: The owner of the subject it travels with, discounted as a tie.
+		Person: "kafka@corp.com", WantStrength: tieExpansionPenalty,
+	}}
+	got := ix.Search("billing retries", 0)
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			for _, m := range got {
+				if string(m.Person.ID) != test.Person {
+					continue
+				}
+				approx := cmpopts.EquateApprox(0, 1e-9)
+				if diff := cmp.Diff(test.WantStrength, m.Strength, approx); diff != "" {
+					t.Errorf("strength mismatch (-want +got):\n%s", diff)
+				}
+				return
+			}
+			t.Fatalf("%s not in results", test.Person)
 		})
 	}
 }

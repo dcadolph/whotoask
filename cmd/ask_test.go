@@ -147,6 +147,62 @@ func TestWarnEmptyAskMarksTheDeactivated(t *testing.T) {
 	}
 }
 
+// TestAskStrengthFollowsOrder verifies that on the saved demo a row never
+// carries a higher strength than the row above it, and that every row listed
+// says why with a reason and a strength above zero. Before, the order and the
+// strength came from different numbers, and a two-word question listed a
+// stronger row under a weaker one.
+func TestAskStrengthFollowsOrder(t *testing.T) {
+	t.Parallel()
+	dir := savedDemo(t)
+	tests := []struct {
+		Query string
+	}{{ // Test 0: A subject beside a word half the company has in its title.
+		Query: "billing engineer",
+	}, { // Test 1: A two-word subject.
+		Query: "billing retries",
+	}, { // Test 2: Two subjects at once.
+		Query: "kafka terraform",
+	}, { // Test 3: A subject beside a team word.
+		Query: "kafka platform",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runCmd(t, "ask", "--data-dir", dir, "--json", "--limit", "20", test.Query)
+			if err != nil {
+				t.Fatalf("ask: %v", err)
+			}
+			var got resolve.JSONAnswer
+			if err := json.Unmarshal(stdout, &got); err != nil {
+				t.Fatalf("decode %s: %v", stdout, err)
+			}
+			check := func(list string, n int, at func(int) (string, float64, []string)) {
+				prev := 1.0
+				for i := range n {
+					name, strength, reasons := at(i)
+					if strength > prev {
+						t.Errorf("%s row %d %s strength %.2f above the row before at %.2f", list, i, name, strength, prev)
+					}
+					if strength <= 0 || len(reasons) == 0 {
+						t.Errorf("%s row %d %s strength %.2f reasons %v, want both", list, i, name, strength, reasons)
+					}
+					prev = strength
+				}
+			}
+			check("people", len(got.People), func(i int) (string, float64, []string) {
+				return got.People[i].Name, got.People[i].Strength, got.People[i].Reasons
+			})
+			check("departed", len(got.Departed), func(i int) (string, float64, []string) {
+				return got.Departed[i].Name, got.Departed[i].Strength, got.Departed[i].Reasons
+			})
+			check("channels", len(got.Channels), func(i int) (string, float64, []string) {
+				return got.Channels[i].Name, got.Channels[i].Strength, got.Channels[i].Reasons
+			})
+		})
+	}
+}
+
 // TestAskTeamsOnlyCodeowners verifies a CODEOWNERS file that names only team
 // handles still answers: the people list is empty, the teams of record carry
 // the answer, the command succeeds, and nothing reads as a miss.

@@ -132,7 +132,7 @@ func registerMCPAsk(srv *mcp.Server, eng *engine.Engine, embedModel, ollamaURL s
 		Name: "whotoask_ask",
 		Description: "Find who to talk to and which channel to ask in about a topic, " +
 			"best match first, from the organization's indexed work tools. Rows carry reasons " +
-			"when the record gives them, and a match strength that does not set the order." +
+			"when the record gives them, and a match strength that never rises down the list." +
 			mcpNotFor,
 		InputSchema: json.RawMessage(`{
 			"type": "object",
