@@ -272,7 +272,11 @@ function render(data) {
     statusEl.textContent =
       "No matches. Try fewer or different words, or browse Topics for what the index knows.";
   } else {
-    statusEl.textContent = people.length + " people, " + channels.length + " channels";
+    // Counted apart, as the terminal and the JSON list them, so the people
+    // count stays within the asked limit.
+    const departed = (data.departed || []).length;
+    statusEl.textContent = (people.length - departed) + " people, "
+      + (departed ? departed + " departed, " : "") + channels.length + " channels";
   }
 }
 
