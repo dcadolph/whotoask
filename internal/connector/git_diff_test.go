@@ -293,7 +293,7 @@ func TestAddNested(t *testing.T) {
 }
 
 // TestMergeSubjects verifies a worker's subject tallies, names, latest times,
-// and curated tokens fold into the walk's totals.
+// subject dates, and curated tokens fold into the walk's totals.
 func TestMergeSubjects(t *testing.T) {
 	t.Parallel()
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -306,6 +306,7 @@ func TestMergeSubjects(t *testing.T) {
 	tl.curated["go"] = true
 	tl.recent["ann"] = map[string]int{"go": 1}
 	tl.direct["ann"] = map[string]int{}
+	tl.topicTimes["ann"] = map[string]time.Time{"go": early, "sql": late}
 
 	counts := map[string]map[string]int{"ann": {"go": 1}}
 	names := map[string]map[string]int{}
@@ -313,7 +314,8 @@ func TestMergeSubjects(t *testing.T) {
 	curated := map[string]bool{}
 	recent := map[string]map[string]int{}
 	direct := map[string]map[string]int{}
-	mergeSubjects(&tl, counts, names, latest, curated, recent, direct, newTogether())
+	topicTimes := map[string]map[string]time.Time{"ann": {"go": late, "sql": early}}
+	mergeSubjects(&tl, counts, names, latest, curated, recent, direct, topicTimes, newTogether())
 
 	if diff := cmp.Diff(map[string]map[string]int{"ann": {"go": 3}}, counts); diff != "" {
 		t.Errorf("counts mismatch (-want +got):\n%s", diff)
@@ -332,6 +334,10 @@ func TestMergeSubjects(t *testing.T) {
 	}
 	if diff := cmp.Diff(map[string]map[string]int{"ann": {}}, direct); diff != "" {
 		t.Errorf("direct mismatch (-want +got):\n%s", diff)
+	}
+	wantTimes := map[string]map[string]time.Time{"ann": {"go": late, "sql": late}}
+	if diff := cmp.Diff(wantTimes, topicTimes); diff != "" {
+		t.Errorf("topicTimes mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -376,32 +382,45 @@ func TestNotePerson(t *testing.T) {
 }
 
 // TestCountSubjects verifies each subject counts once, recent counts only
-// when lately, and both entries exist even for a commit that touched nothing.
+// when lately, both entries exist even for a commit that touched nothing, and
+// each subject touched is dated by the commit while untouched ones keep their
+// own date.
 func TestCountSubjects(t *testing.T) {
 	t.Parallel()
+	old := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		InCommit   map[string]bool
 		WantCounts map[string]map[string]int
 		WantRecent map[string]map[string]int
+		WantTimes  map[string]map[string]time.Time
+		When       time.Time
 		Lately     bool
 	}{{ // Test 0: An old commit counts subjects but not recent work.
-		InCommit:   map[string]bool{"go": true, "sql": true},
+		InCommit: map[string]bool{"go": true, "sql": true}, When: old,
 		WantCounts: map[string]map[string]int{"ann": {"go": 1, "sql": 1}},
 		WantRecent: map[string]map[string]int{},
-	}, { // Test 1: A recent commit counts both.
-		InCommit: map[string]bool{"go": true}, Lately: true,
+		WantTimes:  map[string]map[string]time.Time{"ann": {"go": old, "sql": old, "billing": old}},
+	}, { // Test 1: A recent commit counts both and dates only what it touched.
+		InCommit: map[string]bool{"go": true}, Lately: true, When: when,
 		WantCounts: map[string]map[string]int{"ann": {"go": 1}},
 		WantRecent: map[string]map[string]int{"ann": {"go": 1}},
+		WantTimes:  map[string]map[string]time.Time{"ann": {"go": when, "billing": old}},
 	}, { // Test 2: A recent commit with no subjects still creates both entries.
-		InCommit: map[string]bool{}, Lately: true,
+		InCommit: map[string]bool{}, Lately: true, When: when,
 		WantCounts: map[string]map[string]int{"ann": {}},
 		WantRecent: map[string]map[string]int{"ann": {}},
+		WantTimes:  map[string]map[string]time.Time{"ann": {"billing": old}},
 	}}
 	for testNum, test := range tests {
 		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
 			t.Parallel()
 			tl := newTally()
-			tl.countSubjects("ann", test.Lately, test.InCommit)
+			tl.topicTimes["ann"] = map[string]time.Time{"billing": old}
+			tl.countSubjects("ann", test.When, test.Lately, test.InCommit)
+			if diff := cmp.Diff(test.WantTimes, tl.topicTimes); diff != "" {
+				t.Errorf("topicTimes mismatch (-want +got):\n%s", diff)
+			}
 			if diff := cmp.Diff(test.WantCounts, tl.counts); diff != "" {
 				t.Errorf("counts mismatch (-want +got):\n%s", diff)
 			}
@@ -487,7 +506,7 @@ func TestCreditCommit(t *testing.T) {
 		WantDirWork: map[string]map[string]float64{},
 		WantRecent:  []string{"ann@x.com", "co@x.com", "rev@x.com"},
 	}, { // Test 2: An old commit counts no recent work.
-		Paths: []string{"zwave_js/light.py"}, Age: recentWindow + time.Hour,
+		Paths: []string{"zwave_js/light.py"}, Age: RecentWindow + time.Hour,
 		WantDirect: map[string]map[string]int{
 			"ann@x.com": {"zwave_js": 1, "python": 1},
 			"co@x.com":  {"zwave_js": 1, "python": 1},

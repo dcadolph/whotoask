@@ -17,5 +17,8 @@ var ErrNoColumns = errors.New("org csv: required columns missing")
 // ErrNoCodeOwners indicates no CODEOWNERS file was found.
 var ErrNoCodeOwners = errors.New("codeowners: no CODEOWNERS file found")
 
+// ErrTopicTimes indicates stored subject dates could not be decoded.
+var ErrTopicTimes = errors.New("topic times: decode")
+
 // ErrNoRepos indicates no repositories were given to the GitHub connector.
 var ErrNoRepos = errors.New("github: no repositories (use repos or an org)")

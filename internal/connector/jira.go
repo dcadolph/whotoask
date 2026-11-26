@@ -135,6 +135,9 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	ties := newTogether()
 	users := make(map[string]jira.User)
 	latest := make(map[string]time.Time)
+	// The newest activity on each token, per person, which each subject's
+	// recency decays from.
+	topicTimes := make(map[string]map[string]time.Time)
 	// Tokens any issue stated as a label or component. Everything else mined from
 	// a summary or description stays a weak topic.
 	curated := make(map[string]bool)
@@ -151,11 +154,14 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 			c = make(map[string]int)
 			counts[key] = c
 		}
+		clean := make([]string, 0, len(tokens))
 		for _, tok := range tokens {
 			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
 				c[tok]++
+				clean = append(clean, tok)
 			}
 		}
+		noteTopicTime(topicTimes, key, clean, t)
 		if t.After(latest[key]) {
 			latest[key] = t
 		}
@@ -208,6 +214,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		rec := jiraPersonRecord(users[key], nil)
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
 		rec.Time = latest[key]
+		rec.TopicTimes = topicTimes[key]
 		records = append(records, rec)
 	}
 	records = append(records, ties.records("jira")...)

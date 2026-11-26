@@ -126,6 +126,9 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	curated := make(map[string]bool)
 	users := make(map[string]confluence.User)
 	latest := make(map[string]time.Time)
+	// The newest activity on each token, per person, which each subject's
+	// recency decays from.
+	topicTimes := make(map[string]map[string]time.Time)
 	bump := func(u *confluence.User, tokens []string, t time.Time) {
 		if u == nil {
 			return
@@ -139,11 +142,14 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 			m = make(map[string]int)
 			counts[key] = m
 		}
+		clean := make([]string, 0, len(tokens))
 		for _, tok := range tokens {
 			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
 				m[tok]++
+				clean = append(clean, tok)
 			}
 		}
+		noteTopicTime(topicTimes, key, clean, t)
 		if t.After(latest[key]) {
 			latest[key] = t
 		}
@@ -200,6 +206,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		rec := confluencePersonRecord(users[key], nil)
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(m), curated)
 		rec.Time = latest[key]
+		rec.TopicTimes = topicTimes[key]
 		records = append(records, rec)
 	}
 	records = append(records, ties.records("confluence")...)

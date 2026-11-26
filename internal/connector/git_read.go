@@ -24,7 +24,7 @@ import (
 )
 
 // readRepo walks one repository's log, accumulating per-author topic counts,
-// display names, and latest activity. Authors are canonicalized through the
+// display names, latest activity, and the newest commit on each subject. Authors are canonicalized through the
 // repository's .mailmap so one person's several emails merge. It returns the
 // number of commits read.
 func (g *GitHistory) readRepo(
@@ -36,6 +36,7 @@ func (g *GitHistory) readRepo(
 	curated map[string]bool,
 	recent map[string]map[string]int,
 	direct map[string]map[string]int,
+	topicTimes map[string]map[string]time.Time,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	jobs, mark, skips, err := g.scanCommits(ctx, path)
@@ -48,7 +49,7 @@ func (g *GitHistory) readRepo(
 	skips.report(g.opts.Log, path)
 	jobs = unshareSquashMailboxes(jobs)
 	return g.diffCommits(ctx, path, g.repoIDs[path], jobs,
-		counts, names, latest, curated, recent, direct, ties)
+		counts, names, latest, curated, recent, direct, topicTimes, ties)
 }
 
 // unshareSquashMailboxes re-keys commits caught in a shared squash mailbox: a
@@ -583,11 +584,15 @@ type tally struct {
 	// a word somebody wrote.
 	curated map[string]bool
 	// recent counts, per author, the subjects they have worked on lately. See
-	// recentWindowDays.
+	// RecentWindow.
 	recent map[string]map[string]int
 	// direct counts, per author, the subjects their own changed directories
 	// named, as against a file elsewhere carrying the name.
 	direct map[string]map[string]int
+	// topicTimes holds, per author, the newest commit that touched each
+	// subject. Recency decays per subject from it, so a person's fresh work in
+	// one area never restores full weight to years-old work in another.
+	topicTimes map[string]map[string]time.Time
 	// ties is this worker's share of what was worked on together.
 	ties *togetherIndex
 	// dirWork counts, per directory prefix and per author, the commits that

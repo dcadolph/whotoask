@@ -237,6 +237,9 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	// How often each author has worked on each subject lately.
 	recent := make(map[string]map[string]int)
 	direct := make(map[string]map[string]int)
+	// The newest commit on each subject, per author, which is what each
+	// subject's recency decays from.
+	topicTimes := make(map[string]map[string]time.Time)
 	// Which subjects appeared, which appeared together, and who worked across
 	// each pairing.
 	ties := newTogether()
@@ -246,7 +249,8 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, direct, ties)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent,
+			direct, topicTimes, ties)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -299,28 +303,25 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	fmt.Fprintf(g.opts.Log, "git: read %d of %d repositories\n", g.repos, len(g.opts.Paths))
 
 	names := pickNames(nameCounts)
-	// One record per author, carrying everything they touched in the window and
-	// dated at their most recent commit, so recency decay applies to the person
-	// rather than to each contribution.
-	//
-	// That is deliberate for the question whotoask is usually asked, which is who
-	// to go to now, and it is invisible over a window of a year. It stops being
-	// invisible over a long one. Indexing thirteen years of home-assistant/core
-	// tripled the areas whose declared owner is out-worked, from 113 to 270,
-	// because one recent commit restores full weight to a decade of old work and
-	// whoever wrote an integration in 2017 outranks whoever maintains it today.
-	// Fixing it means carrying a time per subject rather than per author; until
-	// then, a long --git-since-days buys coverage at the cost of ranking.
+	// One record per author, carrying everything they touched in the window.
+	// The record's Time is their newest commit anywhere, and TopicTimes dates
+	// each subject by the newest commit that touched it, so recency decays per
+	// subject. A single date per person lets one fresh commit restore full
+	// weight to a decade of old work: on thirteen years of home-assistant/core
+	// it tripled the areas whose declared owner is out-worked, from 113 to 270,
+	// because whoever wrote an integration in 2017 and still committed
+	// elsewhere outranked whoever maintains it today.
 	records := make([]Record, 0, len(counts))
 	for _, email := range slices.Sorted(maps.Keys(counts)) {
 		c := counts[email]
 		rec := Record{
-			Kind:   KindPerson,
-			Source: "git",
-			Weight: 1,
-			Email:  email,
-			Name:   names[email],
-			Time:   latest[email],
+			Kind:       KindPerson,
+			Source:     "git",
+			Weight:     1,
+			Email:      email,
+			Name:       names[email],
+			Time:       latest[email],
+			TopicTimes: topicTimes[email],
 		}
 		// A file path is where work demonstrably landed, so it establishes a
 		// subject; a commit subject is prose and only corroborates one.
@@ -519,13 +520,13 @@ const maxGitWorkers = 8
 
 const gitProgressEvery = 3 * time.Second
 
-// recentWindow is how lately somebody must have worked on a subject to still
+// RecentWindow is how lately somebody must have worked on a subject to still
 // count as being in it. Measured rather than chosen: on a real repository the
 // leading expert of two subjects in five had already stopped touching them, and
 // such a lead was less than half as likely to still hold the subject six months
 // on. Half a year is long enough that an ordinary gap between contributions
 // does not read as leaving.
-const recentWindow = 180 * 24 * time.Hour
+const RecentWindow = 180 * 24 * time.Hour
 
 // noteTogether records which of a commit's subjects were worked on together.
 // Only subjects named by DIFFERENT paths count as having met: one path yields

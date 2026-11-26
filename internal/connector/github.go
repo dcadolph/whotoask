@@ -125,6 +125,9 @@ type repoTally struct {
 	counts map[string]map[string]int
 	// latest maps a login to its most recent activity.
 	latest map[string]time.Time
+	// topicTimes maps a login to the most recent activity on each token, so
+	// recency decays per subject rather than per person.
+	topicTimes map[string]map[string]time.Time
 	// curated holds the tokens some repository, pull request, or issue stated
 	// as a topic or label. Everything else mined from a name, title, or
 	// description stays weak.
@@ -136,10 +139,11 @@ type repoTally struct {
 // newRepoTally returns an empty tally.
 func newRepoTally() *repoTally {
 	return &repoTally{
-		counts:  make(map[string]map[string]int),
-		latest:  make(map[string]time.Time),
-		curated: make(map[string]bool),
-		pulls:   make(map[PullRef][]string),
+		counts:     make(map[string]map[string]int),
+		latest:     make(map[string]time.Time),
+		topicTimes: make(map[string]map[string]time.Time),
+		curated:    make(map[string]bool),
+		pulls:      make(map[PullRef][]string),
 	}
 }
 
@@ -163,11 +167,14 @@ func (t *repoTally) bump(login string, tokens []string, at time.Time) {
 		c = make(map[string]int)
 		t.counts[login] = c
 	}
+	clean := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
 		if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
 			c[tok]++
+			clean = append(clean, tok)
 		}
 	}
+	noteTopicTime(t.topicTimes, login, clean, at)
 	if at.After(t.latest[login]) {
 		t.latest[login] = at
 	}
@@ -190,6 +197,7 @@ func (t *repoTally) absorb(other *repoTally) {
 			t.latest[login] = at
 		}
 	}
+	mergeTopicTimes(t.topicTimes, other.topicTimes)
 	maps.Copy(t.curated, other.curated)
 	maps.Copy(t.pulls, other.pulls)
 }
@@ -324,6 +332,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		rec := githubPersonRecord(login, nil, accounts[login])
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(tokenCounts), total.curated)
 		rec.Time = total.latest[login]
+		rec.TopicTimes = total.topicTimes[login]
 		records = append(records, rec)
 	}
 	records = append(records, codeOwnerRecords...)

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dcadolph/whotoask/internal/connector"
 	"github.com/dcadolph/whotoask/internal/model"
@@ -205,8 +206,9 @@ func redactRecord(rec connector.Record) connector.Record {
 //
 // Folding matches what a full read produces: a connector's full run already
 // emits one record per person carrying that person's whole activity at their
-// most recent time, which is exactly what summing the batches and taking the
-// latest time yields here. An item edited after it was read is counted in both
+// most recent time, with each subject dated by its own newest activity, which
+// is exactly what summing the batches and taking the latest of each date
+// yields here. An item edited after it was read is counted in both
 // the held record and the delta. The engine bounds that by reading the source
 // in full on a schedule, which replaces the held records with one clean count.
 func (ix *Index) MergeIncremental(records []connector.Record) {
@@ -319,8 +321,10 @@ func identityFoldKey(rec connector.Record) string {
 
 // foldRecord sums add into base: it concatenates every topic list and the term
 // list that rebuild turns into weight, unions channel members, advances the time
-// to the most recent activity, and fills any identity field base is missing.
+// to the most recent activity, keeps each subject's own newest date, and fills
+// any identity field base is missing.
 func foldRecord(base, add connector.Record) connector.Record {
+	base.TopicTimes = foldTopicTimes(base, add)
 	base.Topics = append(base.Topics, add.Topics...)
 	base.RecentTopics = append(base.RecentTopics, add.RecentTopics...)
 	base.DirectTopics = append(base.DirectTopics, add.DirectTopics...)
@@ -364,6 +368,39 @@ func foldRecord(base, add connector.Record) connector.Record {
 		base.Weight = add.Weight
 	}
 	return base
+}
+
+// foldTopicTimes merges two records' subject dates, keeping the later date of
+// each subject. A subject one side holds without a date is dated by that
+// side's Time first: once folded, the record's Time is the newer of the two,
+// and an undated subject would otherwise inherit it. That is how a record held
+// from before subjects carried dates keeps its old subjects old when an
+// incremental run folds fresh work onto it. Records that date no subject on
+// either side stay undated.
+func foldTopicTimes(base, add connector.Record) connector.TopicTimes {
+	if base.TopicTimes == nil && add.TopicTimes == nil {
+		return nil
+	}
+	out := make(connector.TopicTimes, len(base.TopicTimes)+len(add.TopicTimes))
+	for _, rec := range []connector.Record{base, add} {
+		for _, list := range [][]string{rec.Topics, rec.WeakTopics, rec.RecentTopics} {
+			for _, top := range list {
+				at, ok := rec.TopicTimes[top]
+				if !ok {
+					at = rec.Time
+				}
+				if at.After(out[top]) {
+					out[top] = at
+				}
+			}
+		}
+		for top, at := range rec.TopicTimes {
+			if at.After(out[top]) {
+				out[top] = at
+			}
+		}
+	}
+	return out
 }
 
 // firstNonEmpty returns a when it is non-empty, otherwise b.
@@ -422,14 +459,21 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	if w <= 0 {
 		w = 1
 	}
-	// base survives without the recency discount. The discount dates a person's
-	// whole record by their newest commit anywhere, which is right for "who do
-	// I ask" and wrong for "whose area is this": an author quiet for nine
-	// months everywhere had six changes inside an area counted as three, and
-	// lost it to a passer-by with two fresh ones. Ownership is judged flat over
-	// the indexed window; the window itself is the recency bound.
+	// base survives without the recency discount, which is right for "who do
+	// I ask" and wrong for "whose area is this": an author quiet on an area for
+	// nine months had six changes inside it counted as three, and lost it to a
+	// passer-by with two fresh ones. Ownership is judged flat over the indexed
+	// window; the window itself is the recency bound.
 	base := w
 	w *= ix.decay(rec.Time)
+	// topicW is a subject's weight, decayed from the newest activity on that
+	// subject when the source dated it, else from the record's own time.
+	topicW := func(top string) float64 {
+		if at, ok := rec.TopicTimes[top]; ok {
+			return base * ix.decay(at)
+		}
+		return w
+	}
 	p := g.People[pid]
 	if p == nil {
 		p = &model.Person{ID: pid, Topics: make(map[model.ID]float64)}
@@ -452,40 +496,41 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		pt = &personText{}
 		texts[pid] = pt
 	}
-	addKey := func(key string, fieldWeight float64) {
+	addKey := func(key string, weight float64) {
 		if postings[key] == nil {
 			postings[key] = make(map[model.ID]float64)
 		}
-		postings[key][pid] += fieldWeight * w
+		postings[key][pid] += weight
 	}
-	add := func(text string, fieldWeight float64) {
+	add := func(text string, weight float64) {
 		for _, tok := range tokenize(text) {
-			addKey(stem(tok), fieldWeight)
+			addKey(stem(tok), weight)
 		}
 	}
 	if rec.Title != "" {
 		pt.Titles = appendUnique(pt.Titles, strings.ToLower(rec.Title))
-		add(rec.Title, weightTitle)
+		add(rec.Title, weightTitle*w)
 	}
 	if rec.Team != "" {
 		pt.Teams = appendUnique(pt.Teams, strings.ToLower(rec.Team))
-		add(rec.Team, weightTeam)
+		add(rec.Team, weightTeam*w)
 	}
 	addTopic := func(top string, curated bool) {
 		tid := topicID(top)
 		if tid == "" {
 			return
 		}
+		tw := weightTopic * topicW(top)
 		noteTopic(g, tid, top, rec.Source, curated)
-		p.Topics[tid] += weightTopic * w
+		p.Topics[tid] += tw
 		if statesOwnership(rec.Source) {
 			if p.Stated == nil {
 				p.Stated = make(map[model.ID]float64)
 			}
-			p.Stated[tid] += weightTopic * w
+			p.Stated[tid] += tw
 		}
 		pt.Topics = append(pt.Topics, strings.ToLower(top))
-		add(top, weightTopic)
+		add(top, tw)
 		if curated && rec.Source == "codeowners" && !slices.Contains(p.Owns, tid) {
 			p.Owns = append(p.Owns, tid)
 		}
@@ -498,16 +543,22 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	}
 	// What they have worked on lately, which is a subset of what they know.
 	// Kept apart so a subject somebody knows best but has stopped touching can
-	// be told from one they are still in.
+	// be told from one they are still in. A source marks a subject recent as of
+	// its own read, so a subject whose newest activity has since aged past the
+	// window is no longer recent: an incremental run keeps earlier runs'
+	// recent subjects, and without this they would stay recent forever.
 	for _, top := range rec.RecentTopics {
 		tid := topicID(top)
 		if tid == "" {
 			continue
 		}
+		if at, ok := rec.TopicTimes[top]; ok && !ix.withinRecent(at) {
+			continue
+		}
 		if p.Recent == nil {
 			p.Recent = make(map[model.ID]float64)
 		}
-		p.Recent[tid] += weightTopic * w
+		p.Recent[tid] += weightTopic * topicW(top)
 	}
 	// Work done inside the area itself, as against a file elsewhere carrying
 	// its name. Ownership reads this; search reads the whole of Topics, because
@@ -528,12 +579,22 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	// any readable text having touched disk.
 	if rec.Text != "" {
 		pt.Text = strings.TrimSpace(pt.Text + " " + strings.ToLower(rec.Text))
-		add(rec.Text, weightText)
+		add(rec.Text, weightText*w)
 	} else {
 		for _, term := range rec.Terms {
-			addKey(term, weightText)
+			addKey(term, weightText*w)
 		}
 	}
+}
+
+// withinRecent reports whether activity dated at still falls inside the
+// connector's recent window, measured from the same top of the day decay uses
+// so a rebuild agrees with itself all day. Undated activity counts as recent.
+func (ix *Index) withinRecent(at time.Time) bool {
+	if at.IsZero() {
+		return true
+	}
+	return ix.now().UTC().Truncate(24*time.Hour).Sub(at) <= connector.RecentWindow
 }
 
 // addLinks adds each link to the person's deep links once, keeping them sorted.

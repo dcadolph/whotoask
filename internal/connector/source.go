@@ -95,6 +95,12 @@ type Record struct {
 	// Time is when the described activity happened. The zero value marks the
 	// record as a current fact that never decays.
 	Time time.Time
+	// TopicTimes dates each subject in Topics, WeakTopics, and RecentTopics by
+	// the newest activity on that subject, so recency decays per subject
+	// rather than per person: somebody who last touched billing three years
+	// ago and committed elsewhere yesterday is not recent on billing. A
+	// subject missing here is dated by Time.
+	TopicTimes TopicTimes `json:",omitempty"`
 }
 
 // Kind classifies a record. For KindChannel records the person identity fields

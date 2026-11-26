@@ -32,6 +32,7 @@ func (g *GitHistory) diffCommits(
 	curated map[string]bool,
 	recent map[string]map[string]int,
 	direct map[string]map[string]int,
+	topicTimes map[string]map[string]time.Time,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	if len(jobs) == 0 {
@@ -56,7 +57,7 @@ func (g *GitHistory) diffCommits(
 		read += t.read
 		skipped += t.skipped
 		g.mergePlaces(&t, path, label, scoped)
-		mergeSubjects(&t, counts, names, latest, curated, recent, direct, ties)
+		mergeSubjects(&t, counts, names, latest, curated, recent, direct, topicTimes, ties)
 	}
 	return read, skipped, ctx.Err()
 }
@@ -169,7 +170,7 @@ func (g *GitHistory) claimPull(pull PullRef, path string, dirs []string) {
 }
 
 // mergeSubjects folds one worker's subject tallies, display names, latest
-// activity, and ties into the walk's totals.
+// activity, subject dates, and ties into the walk's totals.
 func mergeSubjects(
 	t *tally,
 	counts map[string]map[string]int,
@@ -178,6 +179,7 @@ func mergeSubjects(
 	curated map[string]bool,
 	recent map[string]map[string]int,
 	direct map[string]map[string]int,
+	topicTimes map[string]map[string]time.Time,
 	ties *togetherIndex,
 ) {
 	for tok := range t.curated {
@@ -185,6 +187,7 @@ func mergeSubjects(
 	}
 	addNested(recent, t.recent)
 	addNested(direct, t.direct)
+	mergeTopicTimes(topicTimes, t.topicTimes)
 	ties.absorb(t.ties)
 	addNested(counts, t.counts)
 	for email, when := range t.latest {
@@ -231,6 +234,7 @@ func newTally() tally {
 		curated:    make(map[string]bool),
 		recent:     make(map[string]map[string]int),
 		direct:     make(map[string]map[string]int),
+		topicTimes: make(map[string]map[string]time.Time),
 		ties:       newTogether(),
 		dirWork:    make(map[string]map[string]float64),
 		workTotals: make(map[string]float64),
@@ -326,7 +330,7 @@ func (t *tally) creditCommit(job commitJob, paths []string, path string, now tim
 	if at := job.When.Unix(); t.firstSeen[job.Email] == 0 || at < t.firstSeen[job.Email] {
 		t.firstSeen[job.Email] = at
 	}
-	lately := now.Sub(job.When) <= recentWindow
+	lately := now.Sub(job.When) <= RecentWindow
 	subs := subjectsOf(paths)
 	for tok := range subs.directHere {
 		t.curated[tok] = true
@@ -334,7 +338,7 @@ func (t *tally) creditCommit(job commitJob, paths []string, path string, now tim
 	// Created even when nothing lands in it, so the author always has a direct
 	// entry, the same as an author with direct work.
 	direct := nested(t.direct, job.Email)
-	t.countSubjects(job.Email, lately, subs.inCommit)
+	t.countSubjects(job.Email, job.When, lately, subs.inCommit)
 	narrow := !isSweep(paths)
 	if narrow {
 		bumpTokens(direct, subs.directHere)
@@ -351,9 +355,11 @@ func (t *tally) creditCommit(job commitJob, paths []string, path string, now tim
 	// Mine it once per commit, so it weighs less than the per-file paths but
 	// still lets ask match what the work was about, not just which files moved.
 	m := nested(t.counts, job.Email)
-	for _, tok := range phraseTokens(job.Subject) {
+	words := phraseTokens(job.Subject)
+	for _, tok := range words {
 		m[tok]++
 	}
+	noteTopicTime(t.topicTimes, job.Email, words, job.When)
 	// The people the message credits engaged with the same change: a
 	// co-author wrote it, a reviewer or acker held the area well enough to
 	// judge it. Each gets the commit's subjects the way the author does,
@@ -362,7 +368,7 @@ func (t *tally) creditCommit(job commitJob, paths []string, path string, now tim
 	// Direct draws everywhere: they changed the files, a reviewer did not.
 	for _, tp := range job.Trailers {
 		t.notePerson(tp.Email, tp.Name, job.When)
-		t.countSubjects(tp.Email, lately, subs.inCommit)
+		t.countSubjects(tp.Email, job.When, lately, subs.inCommit)
 		if tp.CoAuthor && narrow {
 			bumpTokens(nested(t.direct, tp.Email), subs.directHere)
 		}
@@ -381,8 +387,9 @@ func (t *tally) notePerson(email, name string, when time.Time) {
 	}
 }
 
-// countSubjects credits a person once with each subject a commit touched, and
-// with the same subjects as recent work when the commit is lately. The
+// countSubjects credits a person once with each subject a commit touched,
+// dates each of those subjects no earlier than when, and credits the same
+// subjects as recent work when the commit is lately. The
 // person's counts, and their recent counts when lately, are created even when
 // the commit touched nothing.
 //
@@ -393,18 +400,21 @@ func (t *tally) notePerson(email, name string, when time.Time) {
 // somebody with a single twelve-file commit, over the maintainer with
 // twenty-seven separate ones. What makes somebody the person to ask is having
 // come back to an area, not having touched a lot of it once.
-func (t *tally) countSubjects(email string, lately bool, inCommit map[string]bool) {
+func (t *tally) countSubjects(email string, when time.Time, lately bool, inCommit map[string]bool) {
 	m := nested(t.counts, email)
 	var fresh map[string]int
 	if lately {
 		fresh = nested(t.recent, email)
 	}
+	toks := make([]string, 0, len(inCommit))
 	for tok := range inCommit {
 		m[tok]++
 		if fresh != nil {
 			fresh[tok]++
 		}
+		toks = append(toks, tok)
 	}
+	noteTopicTime(t.topicTimes, email, toks, when)
 }
 
 // bumpTokens adds one to each of toks in m.
