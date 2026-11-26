@@ -78,6 +78,10 @@ type Adjacent struct {
 	Score float64 `json:"score"`
 	// Reasons explain the adjacency in plain terms.
 	Reasons []string `json:"reasons,omitempty"`
+	// Deactivated marks a person whose every known account is deactivated.
+	// They are listed after everyone who can still be reached, as ask lists
+	// them.
+	Deactivated bool `json:"deactivated,omitempty"`
 }
 
 // FindPerson resolves a query to a person by canonical id, email, or an exact
@@ -291,10 +295,13 @@ func rankAdjacent(g *model.Graph, cands map[model.ID]*candidate, limit int) []Ad
 		}
 		out = append(out, Adjacent{
 			ID: id, Name: p.Name, Email: p.Email,
-			Score: c.score, Reasons: reasonsFor(c),
+			Score: c.score, Reasons: reasonsFor(c), Deactivated: p.Deactivated(),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].Deactivated != out[j].Deactivated {
+			return !out[i].Deactivated
+		}
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score
 		}

@@ -19,9 +19,11 @@ type Directory struct {
 	People []DirectoryPerson `json:"people"`
 	// Channels lists every channel, sorted by name.
 	Channels []DirectoryChannel `json:"channels"`
-	// Teams lists every team with its size, sorted by name.
+	// Teams lists every team of record with its size, and every CODEOWNERS
+	// group marked as one, sorted by name.
 	Teams []DirectoryTeam `json:"teams"`
-	// Topics lists every topic with how many people carry it, most first.
+	// Topics lists every subject people are on record for, folded to one per
+	// group, with how many people carry it, most first.
 	Topics []DirectoryTopic `json:"topics"`
 }
 
@@ -70,8 +72,13 @@ type DirectoryTeam struct {
 	Name string `json:"name"`
 	// Org is the team's organization name.
 	Org string `json:"org,omitempty"`
-	// People is how many people the team has.
+	// People is how many people the team has. It is zero for a Group, whose
+	// membership is not on record.
 	People int `json:"people"`
+	// Group marks a CODEOWNERS group: declared as an owner, with no membership
+	// on record, so it is not a team of record and its People is unknown rather
+	// than zero.
+	Group bool `json:"group,omitempty"`
 	// Topics are what the team works on most, so the row says something about
 	// the team rather than only counting it.
 	Topics []string `json:"topics,omitempty"`
@@ -117,7 +124,7 @@ func BuildDirectory(ix *index.Index) Directory {
 				name = string(p.ID)
 			}
 			squads = append(squads, DirectoryTeam{
-				Name: name, Topics: salientTopics(ix, p.Topics, 4),
+				Name: name, Group: true, Topics: salientTopics(ix, p.Topics, 4),
 			})
 			continue
 		}
@@ -172,7 +179,7 @@ func BuildDirectory(ix *index.Index) Directory {
 			if topicSize[tid] == 1 {
 				d.People[i].Alone = append(d.People[i].Alone, name)
 			}
-			if _, still := p.Recent[tid]; !still && p.Topics[tid] > 0 {
+			if hasMovedOn(ix, p.ID, tid) {
 				d.People[i].Quiet = append(d.People[i].Quiet, name)
 			}
 		}
@@ -225,22 +232,7 @@ func BuildDirectory(ix *index.Index) Directory {
 	// once. If nothing survives, the unfiltered set is listed rather than an
 	// empty page.
 	groups := topicGroups(ix)
-	holders := make(map[string]map[model.ID]bool)
-	for id, p := range g.People {
-		for tid := range p.Topics {
-			if !g.Topics[tid].Salient() {
-				continue
-			}
-			name := groups[string(tid)]
-			if name == "" {
-				name = string(tid)
-			}
-			if holders[name] == nil {
-				holders[name] = make(map[model.ID]bool)
-			}
-			holders[name][id] = true
-		}
-	}
+	holders := subjectHolders(ix, groups)
 	lead := leads(ix)
 	for name, people := range holders {
 		row := DirectoryTopic{Name: name, People: len(people)}
@@ -249,7 +241,7 @@ func BuildDirectory(ix *index.Index) Directory {
 		}
 		for id := range people {
 			p := g.People[id]
-			if p == nil {
+			if p == nil || p.Deactivated() {
 				continue
 			}
 			for tid, w := range p.Recent {
@@ -273,4 +265,39 @@ func BuildDirectory(ix *index.Index) Directory {
 		return d.Topics[i].Name < d.Topics[j].Name
 	})
 	return d
+}
+
+// subjectHolders maps each subject the organization has, folded to one name per
+// group, to the people on record for it. A team of record is not a person and
+// is left out, so a count of holders is a count of people.
+func subjectHolders(ix *index.Index, groups map[string]string) map[string]map[model.ID]bool {
+	g := ix.Graph
+	holders := make(map[string]map[model.ID]bool)
+	for id, p := range g.People {
+		if id.IsTeam() {
+			continue
+		}
+		for tid := range p.Topics {
+			if !g.Topics[tid].Salient() {
+				continue
+			}
+			name := groups[string(tid)]
+			if name == "" {
+				name = string(tid)
+			}
+			if holders[name] == nil {
+				holders[name] = make(map[model.ID]bool)
+			}
+			holders[name][id] = true
+		}
+	}
+	return holders
+}
+
+// SubjectCount returns how many subjects the organization has: the salient
+// topics held by at least one person, folded to one per group. It is the count
+// the directory's topic list and the risk view are built over, so a status line
+// and a browsable list name the same number.
+func SubjectCount(ix *index.Index) int {
+	return len(subjectHolders(ix, topicGroups(ix)))
 }

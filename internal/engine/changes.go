@@ -21,19 +21,22 @@ const MaxChangeEntries = 100
 type ChangeEntry struct {
 	// At is the indexer clock's time when the fold ran.
 	At time.Time `json:"at"`
-	// Changes lists who and what joined or left in that fold.
+	// Changes lists who and what was added to or dropped from the index in
+	// that fold.
 	Changes index.Changes `json:"changes"`
 }
 
-// reportChanges prints a one-line summary and capped lists of who and what
-// joined or left since the last index.
+// reportChanges prints a one-line summary and capped lists of who and what was
+// added to or is no longer in the index since the last one. These are index
+// presence, not employment: a merge or a forget moves a name as surely as a
+// hire or a departure does.
 func reportChanges(w io.Writer, c index.Changes) {
 	if c.Empty() {
 		return
 	}
 	fmt.Fprintf(w, "changes since last index: %s\n", c.Summary())
-	printChangeList(w, "joined", c.PeopleJoined)
-	printChangeList(w, "left", c.PeopleLeft)
+	printChangeList(w, "added to index", c.PeopleJoined)
+	printChangeList(w, "no longer in index", c.PeopleLeft)
 	printChangeList(w, "new channels", c.ChannelsAdded)
 	printChangeList(w, "gone channels", c.ChannelsRemoved)
 }

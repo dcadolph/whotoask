@@ -422,7 +422,7 @@ func BuildGitRepo(dir string) error {
 // BuildIndex assembles the simulated company into a merged, canonicalized
 // index under dir: it writes the org chart, CODEOWNERS, and alias fixtures,
 // creates the git repository, serves each tool's wire format from in-process
-// HTTP servers, and ingests all eight sources through the real connectors.
+// HTTP servers, and ingests its eight sources through the real connectors.
 func BuildIndex(dir string) (*index.Index, error) {
 	ctx := context.Background()
 	write := func(name, content string) (string, error) {
@@ -552,6 +552,7 @@ func BuildEpisodes(ix *index.Index) (*episode.Store, error) {
 			return nil, fmt.Errorf("simorg: %s episodes: %w", s.Name, err)
 		}
 		eps := s.Source.Episodes()
+		stableLinks(eps, jiraSrv.URL)
 		if ix != nil {
 			ix.CanonicalizeEpisodes(eps)
 		}
@@ -560,6 +561,22 @@ func BuildEpisodes(ix *index.Index) (*episode.Store, error) {
 		}
 	}
 	return store, nil
+}
+
+// demoJiraURL is the base every simulated Jira link is stored under. The fake
+// server lives on a random local port only while the demo builds, so a link to
+// it is dead the moment the build ends.
+const demoJiraURL = "https://jira.example.com"
+
+// stableLinks rewrites each permalink that points at the local server base to
+// the same path under demoJiraURL, so a saved index never stores a dead link.
+func stableLinks(eps []episode.Episode, local string) {
+	local = strings.TrimSuffix(local, "/")
+	for i := range eps {
+		if rest, ok := strings.CutPrefix(eps[i].Permalink, local); ok {
+			eps[i].Permalink = demoJiraURL + rest
+		}
+	}
 }
 
 // slackUser builds one users.list member.

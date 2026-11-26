@@ -7,9 +7,18 @@ import (
 	"github.com/dcadolph/whotoask/internal/resolve"
 )
 
+// notFor closes every answer that names people. It is the sentence every other
+// surface carries, so a reply quoted into a thread keeps it.
+const notFor = "WhoToAsk describes the record, not the person. " +
+	"Its findings must not be used for performance reviews, layoffs, " +
+	"or any other employment decision."
+
 // Format renders an answer as Slack mrkdwn. Every value drawn from the query or
 // the graph is escaped, so text like <!channel> or <@Uxxx> renders as literal
-// characters rather than a workspace-wide broadcast or a mention.
+// characters rather than a workspace-wide broadcast or a mention. Each row
+// carries the reasons it matched, which is where a subject somebody has stopped
+// working on says so, and nothing beside a name ranks the person: no strength,
+// percent, bar, or position number.
 func Format(query string, ans resolve.Answer) string {
 	if len(ans.People) == 0 && len(ans.Departed) == 0 && len(ans.Channels) == 0 && len(ans.Teams) == 0 {
 		return "No matches for *" + escapeMrkdwn(query) + "*. Try different words."
@@ -42,6 +51,7 @@ func Format(query string, ans resolve.Answer) string {
 			}
 			b.WriteString(line)
 			b.WriteString("\n")
+			writeReasons(&b, m.Reasons)
 		}
 	}
 
@@ -57,6 +67,7 @@ func Format(query string, ans resolve.Answer) string {
 			}
 			b.WriteString(line)
 			b.WriteString("\n")
+			writeReasons(&b, c.Reasons)
 		}
 	}
 
@@ -72,10 +83,25 @@ func Format(query string, ans resolve.Answer) string {
 			}
 			b.WriteString(line)
 			b.WriteString("\n")
+			writeReasons(&b, m.Reasons)
 		}
 	}
 
-	return strings.TrimRight(b.String(), "\n")
+	b.WriteString("\n_" + notFor + "_")
+	return b.String()
+}
+
+// writeReasons writes the reasons a row matched on an indented line beneath
+// it, or nothing when the row has none.
+func writeReasons(b *strings.Builder, reasons []string) {
+	if len(reasons) == 0 {
+		return
+	}
+	escaped := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		escaped = append(escaped, escapeMrkdwn(r))
+	}
+	b.WriteString("    " + strings.Join(escaped, " · ") + "\n")
 }
 
 // escapeMrkdwn escapes the three characters Slack treats as mrkdwn control

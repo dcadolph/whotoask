@@ -534,7 +534,7 @@ function showProfile(p) {
   if (p.channels && p.channels.length) {
     const v = el("span", "detail-value detail-chips");
     for (const c of p.channels) v.appendChild(el("span", "chip chip-channel", "#" + c));
-    row("Active in", v);
+    row("Has posted in", v);
   }
   if (p.topics && p.topics.length) {
     const v = el("span", "detail-value detail-chips");
@@ -899,7 +899,7 @@ const DIR_COLUMNS = {
   teams: [
     ["Team", (r) => r.name],
     ["Org", (r) => r.org],
-    ["People", (r) => r.people || "\u2014"],
+    ["People", (r) => (r.group ? "Not on record" : r.people)],
     ["Works on", (r) => (r.topics || []).join("; ")],
   ],
   channels: [
@@ -1038,7 +1038,12 @@ function dirTeamRow(t) {
   card.tabIndex = 0;
   card.title = "Show this team's people";
   card.appendChild(el("div", "name", t.name));
-  const sub = [t.org, t.people + (t.people === 1 ? " person" : " people")].filter(Boolean).join(" · ");
+  // A CODEOWNERS group is declared as an owner with no membership on record,
+  // so its size is unknown rather than zero.
+  const size = t.group
+    ? "CODEOWNERS group, members not on record"
+    : t.people + (t.people === 1 ? " person" : " people");
+  const sub = [t.org, size].filter(Boolean).join(" · ");
   if (sub) card.appendChild(el("div", "sub", sub));
   // What the team actually works on, so the row says something about the team
   // rather than only counting it.

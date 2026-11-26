@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dcadolph/whotoask/internal/index"
 	"github.com/dcadolph/whotoask/internal/render"
 )
 
@@ -20,8 +21,9 @@ func newNearCmd(opts *options) *cobra.Command {
 		Long: `List the people nearest PERSON, nearest first, by shared team and channel
 membership and shared topics. Co-membership is normalized by group size, so a tight team counts for far
 more than a broad channel, org-wide groups are ignored, and permission tiers of
-one group (store-admin, store-write) are folded together. PERSON is an email, an
-id, or an exact name.
+one group (store-admin, store-write) are folded together. A deactivated person
+is marked and listed after everyone who can still be reached, as ask lists them.
+PERSON is an email, an id, or an exact name.
 
   whotoask near alice@example.com
   whotoask near "Kim Ray" --limit 5`,
@@ -45,10 +47,24 @@ id, or an exact name.
 				"near":   nearList,
 			}
 			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
-				render.RenderNear(w, p.Name, nearList, s)
+				render.RenderNear(w, p.Name, markDeactivated(nearList), s)
 			})
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 10, "Maximum number of people to return.")
 	return cmd
+}
+
+// markDeactivated returns a copy of near in which each deactivated person's
+// line opens with the word, the mark ask puts beside them, so the terminal
+// says so as plainly as the JSON's deactivated field does.
+func markDeactivated(near []index.Adjacent) []index.Adjacent {
+	out := make([]index.Adjacent, len(near))
+	for i, a := range near {
+		out[i] = a
+		if a.Deactivated {
+			out[i].Reasons = append([]string{"deactivated"}, a.Reasons...)
+		}
+	}
+	return out
 }

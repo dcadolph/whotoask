@@ -88,7 +88,7 @@ func assessSummary(ix *index.Index, res *assessment) string {
 					"command rather than arguing with the report.\n")
 		}
 	}
-	writeSummaryDepartures(&b, res.Departures, res.Successors)
+	writeSummaryDepartures(&b, res.Departures, res.Cover)
 	writeSummaryDrift(&b, res.Ownership.Drift)
 	questions := assessQuestions(res.Ownership, res.Departures, res.Spans)
 	if len(questions) > 0 {
@@ -144,8 +144,9 @@ func writeSummaryScope(b *strings.Builder, ix *index.Index, res *assessment, c a
 }
 
 // writeSummaryDepartures lists the people who are the whole record of
-// something, each with who stands nearest to it.
-func writeSummaryDepartures(b *strings.Builder, departures []resolve.DepartureImpact, successors []personSuccession) {
+// something, and points to the file that lists, subject by subject, who else
+// is on record.
+func writeSummaryDepartures(b *strings.Builder, departures []resolve.DepartureImpact, cover []resolve.SubjectCover) {
 	if len(departures) > 0 {
 		b.WriteString("\n## Where one person is the whole record\n\n")
 		for i, d := range departures {
@@ -164,13 +165,12 @@ func writeSummaryDepartures(b *strings.Builder, departures []resolve.DepartureIm
 				line += "the lead on record for " + listSome(d.Top)
 			}
 			b.WriteString(line + "\n")
-			b.WriteString(successionLine(d.Person, successors))
 		}
 	}
-	if len(successors) > 0 {
-		b.WriteString("\nNearest is a statement about the record, not about ability: " +
-			"of everyone indexed, this person starts closest to the work. The evidence " +
-			"for each is in successors.json.\n")
+	if len(cover) > 0 {
+		b.WriteString("\nFor each subject resting mainly on one person, also-on-record.json " +
+			"lists everyone else the record shows on it, by name. It says who is there, " +
+			"not who should be: nobody in it is ranked or named to take anything over.\n")
 	}
 }
 
@@ -314,34 +314,6 @@ func coveredSpans(spans []resolve.Span) string {
 			return " The subjects themselves have other people on record. " +
 				"The link between them does not."
 		}
-	}
-	return ""
-}
-
-// successionLine renders who stands nearest to a departure entry's holdings,
-// indented under the holding it belongs to, or the plain statement that nobody
-// does. An empty line means no succession was computed at all.
-func successionLine(person string, successors []personSuccession) string {
-	for _, s := range successors {
-		if s.Person != person {
-			continue
-		}
-		if s.NobodyClose {
-			return "  - nearest candidate: nobody stands out in the record, " +
-				"which is itself the finding\n"
-		}
-		if s.Nearest == nil {
-			return ""
-		}
-		line := "  - nearest candidate: " + s.Nearest.Name
-		if len(s.Nearest.Reasons) > 0 {
-			parts := make([]string, 0, len(s.Nearest.Reasons))
-			for _, r := range s.Nearest.Reasons {
-				parts = append(parts, r.Detail)
-			}
-			line += ": " + strings.Join(parts, "; ")
-		}
-		return line + "\n"
 	}
 	return ""
 }

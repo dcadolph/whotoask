@@ -284,8 +284,9 @@ List the people who work nearest PERSON, nearest first, by shared team and
 channel membership and shared topics. Co-membership is normalized by group size,
 so a small tight team counts for far more than a broad channel; groups that span
 most of the org are ignored as administrative; and permission tiers of one group
-(store-admin, store-write) fold together. PERSON is an email, an id, or an exact
-name.
+(store-admin, store-write) fold together. A deactivated person is marked and
+listed after everyone who can still be reached, as `ask` lists them. PERSON is
+an email, an id, or an exact name.
 
 ## whotoask search
 
@@ -477,9 +478,10 @@ mixes with your own index. The output directory holds `summary.md` (the
 executive summary), `report.html` (the knowledge-risk brief), `findings.json`,
 `ownership.json`, `departures.json`, `crossings.json`, `joined-work.json`,
 `identity.json` (which records were judged to be one person and why, and which
-same-named records were left apart), `successors.json` (for each key person,
-who stands nearest to what rests on them, with the evidence; nearest by the
-record, not a judgment of ability), `systems.json` and `checks.json` when a
+same-named records were left apart), `also-on-record.json` (for each subject
+resting mainly on one person, everyone else the record shows on it, by name;
+who is there, not who should be, with nobody ranked or named to take it over),
+`systems.json` and `checks.json` when a
 repository was read (each significant directory, and one paste-ready git
 command per directory counting the same history, so any row can be checked
 without whotoask), `ramp.json` (what this history shows about moving into an
@@ -724,9 +726,13 @@ what has been indexed. It answers "who is in here?" without running a query.
 
     whotoask status
 
-Report the index: when it was last built; how many people, channels, teams, and
-topics it holds; how many records each source contributed; whether it carries
-embeddings; and whether a key encrypts it at rest.
+Report the index: when it was last built; how many people, channels, teams,
+CODEOWNERS groups, subjects, and mined words it holds; how many records each
+source contributed; whether it carries embeddings; and whether a key encrypts it
+at rest. Teams are the teams of record. A CODEOWNERS group is counted apart,
+since its membership is not on record, and the directory lists it marked as a
+group. Subjects are the ones people are on record for, folded to one per group,
+which is the same count the directory's topic list and `risk` work from.
 
 ## whotoask doctor
 
@@ -777,7 +783,7 @@ view, so the first screen names the directories the work rests on and the ones
 resting on a single person. Every row can be checked against the same history
 with `git log`, which is what makes this the version worth showing somebody.
 
-Without `--repo` it builds a simulated company across all eight sources, which
+Without `--repo` it builds a simulated company across eight sources, which
 covers the conversation and ticket sources a git-only run has nothing to say
 about. Sample data only; it is discarded when the demo stops.
 

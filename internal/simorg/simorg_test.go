@@ -20,7 +20,7 @@ func buildFullIndex(t *testing.T) *index.Index {
 	return ix
 }
 
-// TestFullPipeline runs all eight sources through the real clients against
+// TestFullPipeline runs the simulation's eight sources through the real clients against
 // wire-format servers and checks the truths that only show up end to end.
 func TestFullPipeline(t *testing.T) {
 	t.Parallel()

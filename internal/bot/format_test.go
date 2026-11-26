@@ -81,7 +81,7 @@ func TestFormatTeams(t *testing.T) {
 	for testNum, test := range tests {
 		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
 			t.Parallel()
-			if diff := cmp.Diff(test.WantResult, Format("legal", test.Ans)); diff != "" {
+			if diff := cmp.Diff(test.WantResult+"\n\n_"+notFor+"_", Format("legal", test.Ans)); diff != "" {
 				t.Errorf("Format mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -107,8 +107,53 @@ func TestFormatDeparted(t *testing.T) {
 	for testNum, test := range tests {
 		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
 			t.Parallel()
-			if diff := cmp.Diff(test.WantResult, Format("ledgers", test.Ans)); diff != "" {
+			if diff := cmp.Diff(test.WantResult+"\n\n_"+notFor+"_", Format("ledgers", test.Ans)); diff != "" {
 				t.Errorf("Format mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestFormatCarriesReasons checks each row says why it matched, the quiet mark
+// included, escaped, and with nothing beside a name that ranks the person.
+func TestFormatCarriesReasons(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		WantResult string
+		Ans        resolve.Answer
+	}{{ // Test 0: A person's reasons, quiet mark included, sit under the name.
+		Ans: resolve.Answer{People: []model.Match{{
+			Person: &model.Person{Name: "Ada"}, Score: 9, Strength: 0.8,
+			Reasons: []string{"ledger (topic, no recent activity on record)", "billing (title)"},
+		}}},
+		WantResult: "*People*\n• Ada\n" +
+			"    ledger (topic, no recent activity on record) · billing (title)",
+	}, { // Test 1: Channel and team reasons are escaped.
+		Ans: resolve.Answer{
+			Channels: []model.ChannelMatch{{
+				Channel: &model.Channel{Name: "pay"}, Reasons: []string{"<!here> (mention)"},
+			}},
+			Teams: []model.Match{{
+				Person: &model.Person{Name: "@acme/pay"}, Reasons: []string{"pay (owner)"},
+			}},
+		},
+		WantResult: "*Channels*\n• #pay\n    &lt;!here&gt; (mention)\n\n" +
+			"*Teams (owners of record)*\n• @acme/pay\n    pay (owner)",
+	}, { // Test 2: A row with no reasons gets no reasons line.
+		Ans:        resolve.Answer{People: []model.Match{{Person: &model.Person{Name: "Bo"}}}},
+		WantResult: "*People*\n• Bo",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := Format("ledger", test.Ans)
+			if diff := cmp.Diff(test.WantResult+"\n\n_"+notFor+"_", got); diff != "" {
+				t.Errorf("Format mismatch (-want +got):\n%s", diff)
+			}
+			for _, banned := range []string{"%", "0.8", "strength"} {
+				if strings.Contains(got, banned) {
+					t.Errorf("reply ranks a person with %q:\n%s", banned, got)
+				}
 			}
 		})
 	}

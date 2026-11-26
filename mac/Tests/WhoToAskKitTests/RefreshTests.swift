@@ -9,9 +9,12 @@ import Testing
 struct RefreshTests {
     // Test 0: Change lines name a few and count the rest.
     @Test func summary() throws {
-        let raw = #"{"people_joined":["A","B","C","D","E"],"teams_removed":["Payments"],"channels_added":["infra"]}"#
+        let raw = #"{"people_joined":["A","B","C","D","E"],"people_left":["F"],"teams_removed":["Payments"],"channels_added":["infra"]}"#
         let c: IndexChanges = try Core.decode(raw)
-        #expect(ChangeSummary.lines(c) == ["Joined: A, B, C and 2 more.", "Teams gone: Payments.", "New channels: #infra."])
+        #expect(ChangeSummary.lines(c) == [
+            "Added to index: A, B, C and 2 more.", "No longer in index: F.", "Teams gone: Payments.",
+            "New channels: #infra.",
+        ])
         let none: IndexChanges = try Core.decode("{}")
         #expect(ChangeSummary.lines(none).isEmpty)
     }
@@ -76,7 +79,7 @@ struct RefreshTests {
         try (header + jane + "Ann Lee,ann@x.com,Engineer,Payments,ledger\n").write(to: csv, atomically: true, encoding: .utf8)
         _ = try await core.index("org-csv", flags: ["--file", csv.path], now: start.addingTimeInterval(10))
         await model.opened(now: start.addingTimeInterval(11))
-        #expect(model.changes == ["Joined: Ann Lee.", "New teams: Payments."])
+        #expect(model.changes == ["Added to index: Ann Lee.", "New teams: Payments."])
         model.closed(now: start.addingTimeInterval(12))
         await model.opened(now: start.addingTimeInterval(13))
         #expect(model.changes.isEmpty)

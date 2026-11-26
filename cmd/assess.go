@@ -98,8 +98,9 @@ type assessment struct {
 	Split []resolve.SplitName
 	// Aliases are the joins the rules declined to make alone.
 	Aliases []resolve.AliasSuggestion
-	// Successors is who stands nearest to what rests on each key person.
-	Successors []personSuccession
+	// Cover is, for each subject resting mainly on one person, everyone else
+	// on record for it.
+	Cover []resolve.SubjectCover
 	// Systems reports whether git history was read, so the systems and checks
 	// files are written even when no place clears the floor.
 	Systems bool
@@ -129,7 +130,7 @@ The output directory holds the deliverable:
   systems.json         each significant directory and who its work rests on
   checks.json          a git command per system, so any row can be checked
   departures.json      what the record shows resting on each key person
-  successors.json      who stands nearest to what rests on each key person
+  also-on-record.json  for each subject resting on one person, who else is on record
   ramp.json            what moving into a new area has cost in this history
   identity.json        which records were judged one person, and which were not
   aliases.json         the suggested joins, in the format --aliases reads
@@ -335,22 +336,21 @@ func scoreAssessment(src assessSources, a *assessArgs, log io.Writer) *assessmen
 	res.Ownership = resolve.Ownership(ix)
 	res.Departures = assessDepartures(ix, res.Findings, res.Regions, a.Top)
 	res.Spans = resolve.SoleSpans(ix, 0)
-	reviewers := assessPlaces(res, src, a, log)
+	assessPlaces(res, src, a, log)
 	res.Split = resolve.SplitNames(ix)
 	res.Aliases = resolve.SuggestAliases(ix, res.Split)
-	res.Successors = assessSuccessors(ix, res.Departures, res.Places, reviewers)
+	res.Cover = resolve.AlsoOnRecord(ix, res.Findings)
 	return res
 }
 
 // assessPlaces fills the systems view from the git connector's per-directory
-// tally and returns who reviewed each directory. It does nothing without git.
-func assessPlaces(res *assessment, src assessSources, a *assessArgs, log io.Writer) map[string]map[model.ID]bool {
+// tally. It does nothing without git.
+func assessPlaces(res *assessment, src assessSources, a *assessArgs, log io.Writer) {
 	git, gh := src.Git, src.GitHub
 	if git == nil {
-		return nil
+		return
 	}
 	res.Systems = true
-	var reviewers map[string]map[model.ID]bool
 	// Systems are places, not words: the per-directory tally
 	// answers who a system rests on without pooling every path
 	// that shares its name.
@@ -363,7 +363,6 @@ func assessPlaces(res *assessment, src assessSources, a *assessArgs, log io.Writ
 		warnUnmatchedRepos(log, a.GithubRepos, git.RepoIDs())
 		dirWork = resolve.AddReviewCredit(dirWork, totals,
 			git.PullDirs(), gh.PullPeople())
-		reviewers = reviewersByDir(src.Index, git.PullDirs(), gh.PullPeople())
 	}
 	res.Places = resolve.PlaceLeads(src.Index, dirWork, totals,
 		assessMinPlaceWork, 3)
@@ -372,7 +371,6 @@ func assessPlaces(res *assessment, src assessSources, a *assessArgs, log io.Writ
 	}
 	res.Checks = resolve.PlaceChecks(res.Places, git.PlaceLabels(), a.GitSinceDays)
 	res.Ramp = resolve.MeasureRamp(git.Ramps(), res.Places)
-	return reviewers
 }
 
 // renderAssessment renders every file of the deliverable, unwritten.
@@ -398,8 +396,8 @@ func renderAssessment(ix *index.Index, res *assessment, outDir string, now time.
 		del.json("systems.json", "systems", res.Places)
 		del.json("checks.json", "checks", res.Checks)
 	}
-	if len(res.Successors) > 0 {
-		del.json("successors.json", "successors", res.Successors)
+	if len(res.Cover) > 0 {
+		del.json("also-on-record.json", "also on record", res.Cover)
 	}
 	if res.Ramp.Arrivals > 0 {
 		del.json("ramp.json", "ramp", res.Ramp)
@@ -407,7 +405,7 @@ func renderAssessment(ix *index.Index, res *assessment, outDir string, now time.
 	del.text("summary.md", "summary", "text/markdown", assessSummary(ix, res))
 	html, err := riskHTML(ix, res.Findings, res.Regions, res.Spans, briefFindings{
 		Systems: res.Places, Checks: res.Checks, Ramp: res.Ramp, Split: res.Split,
-		Aliases: res.Aliases, Successors: res.Successors, Merged: len(ix.Joins()),
+		Aliases: res.Aliases, Merged: len(ix.Joins()),
 	}, briefRows, now)
 	if err != nil {
 		return nil, err
@@ -475,82 +473,6 @@ type identityRecord struct {
 	// Suggested are the joins the rules declined to make alone, with the
 	// evidence, for a human to accept or reject.
 	Suggested []resolve.AliasSuggestion `json:"suggested,omitempty"`
-}
-
-// personSuccession is one key person and who stands nearest to what rests on
-// them.
-type personSuccession struct {
-	// Person is the holder's canonical id, and Name their display name.
-	Person string `json:"person"`
-	Name   string `json:"name"`
-	// Dir is the place the succession was judged against, empty when the
-	// holder leads no reported system and only subjects were compared.
-	Dir string `json:"dir,omitempty"`
-	// Nearest is the best-placed candidate. Absent when nobody clears the
-	// evidence floor, which NobodyClose then says outright.
-	Nearest *resolve.Successor `json:"nearest,omitempty"`
-	// NobodyClose is set when the record offers no natural second, which is a
-	// sharper finding than a candidate, not a gap in the report.
-	NobodyClose bool `json:"nobodyClose,omitempty"`
-}
-
-// assessSuccessors names, for each person in the departure view, who stands
-// nearest to what rests on them. A finding without a next move is a worry; a
-// name with evidence beside it is something a reader can act on in the room.
-func assessSuccessors(
-	ix *index.Index, departures []resolve.DepartureImpact, places []resolve.Place,
-	reviewers map[string]map[model.ID]bool,
-) []personSuccession {
-	// The place each person most singly holds, so place evidence attaches to
-	// the directory the finding is about rather than an arbitrary one.
-	topPlace := make(map[string]string)
-	for _, pl := range places {
-		if len(pl.Holders) == 0 || pl.Bus > 1 {
-			continue
-		}
-		holder := pl.Holders[0].ID
-		if _, taken := topPlace[holder]; !taken {
-			topPlace[holder] = pl.Dir
-		}
-	}
-	in := resolve.NewSuccessorInputs(ix, places, reviewers)
-	out := make([]personSuccession, 0, len(departures))
-	for _, d := range departures {
-		entry := personSuccession{Person: d.Person, Name: d.Name, Dir: topPlace[d.Person]}
-		near, ok := in.SuccessorFor(ix, model.ID(d.Person), entry.Dir)
-		if ok {
-			entry.Nearest = &near
-		} else {
-			entry.NobodyClose = true
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-// reviewersByDir maps each directory to the canonical people who took part in
-// pull requests that changed it. It is the succession model's third evidence
-// source: a reviewer has read the area without writing it.
-func reviewersByDir(
-	ix *index.Index, pullDirs map[connector.PullRef][]string,
-	pullPeople map[connector.PullRef][]string,
-) map[string]map[model.ID]bool {
-	out := make(map[string]map[model.ID]bool)
-	for pull, dirs := range pullDirs {
-		for _, login := range pullPeople[pull] {
-			if login == "" {
-				continue
-			}
-			id := ix.CanonicalID(model.ID("github:" + strings.ToLower(login)))
-			for _, dir := range dirs {
-				if out[dir] == nil {
-					out[dir] = make(map[model.ID]bool)
-				}
-				out[dir][id] = true
-			}
-		}
-	}
-	return out
 }
 
 // warnUnmatchedRepos reports a named forge repository that none of the read
@@ -738,10 +660,10 @@ var assessFileNotes = map[string]string{
 	"identity.json": "Which records were judged to be the same person and why,\n" +
 		"                     and which same-named records were left apart. Check this\n" +
 		"                     first if a finding looks wrong: every number rests on it.",
-	"successors.json": "For each key person, who stands nearest to what rests on\n" +
-		"                     them, with the evidence: works there already, has\n" +
-		"                     reviewed it, shares the subjects. Nearest by the record,\n" +
-		"                     not a judgment of ability.",
+	"also-on-record.json": "For each subject resting mainly on one person, everyone\n" +
+		"                     else the record shows on it, listed by name. Who is\n" +
+		"                     there, not who should be: no one is ranked or named to\n" +
+		"                     take anything over.",
 	"checks.json": "One paste-ready git command per reported system, counting\n" +
 		"                     the same history the finding was counted from, so any\n" +
 		"                     row can be checked without whotoask.",

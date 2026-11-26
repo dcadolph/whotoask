@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -138,10 +139,79 @@ func TestDirectoryRoutesSquadsToTeams(t *testing.T) {
 		t.Fatalf("squad missing from teams: %+v", d.Teams)
 		return
 	}
-	if squad.People != 0 {
-		t.Errorf("squad membership = %d, want 0 for unknown", squad.People)
+	if squad.People != 0 || !squad.Group {
+		t.Errorf("squad = %+v, want a group with membership 0 for unknown", *squad)
+	}
+	for _, topic := range d.Topics {
+		if topic.Name == "alerting" || topic.Name == "silences" {
+			t.Errorf("topic %q counted the squad as a person: %+v", topic.Name, topic)
+		}
 	}
 	if len(squad.Topics) == 0 {
 		t.Errorf("squad row carries no areas: %+v", squad)
+	}
+}
+
+// TestDirectoryQuietAndActiveNeedEvidence checks the directory reads recency
+// by the same rule as risk: a person whose sources never said what was recent
+// is not called quiet, and a deactivated person is never counted as active.
+func TestDirectoryQuietAndActiveNeedEvidence(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		WantQuiet  []string
+		WantActive int
+		Person     *model.Person
+	}{{ // Test 0: No recent record claims nothing either way.
+		Person: &model.Person{
+			ID: "ann@x.com", Name: "Ann",
+			Topics: map[model.ID]float64{"ledger": 4},
+		},
+		WantQuiet: nil, WantActive: 0,
+	}, { // Test 1: Recent elsewhere and not here reads as quiet here.
+		Person: &model.Person{
+			ID: "ann@x.com", Name: "Ann",
+			Topics: map[model.ID]float64{"ledger": 4, "billing": 2},
+			Recent: map[model.ID]float64{"billing": 1},
+		},
+		WantQuiet: []string{"ledger"}, WantActive: 0,
+	}, { // Test 2: Recent here reads as active.
+		Person: &model.Person{
+			ID: "ann@x.com", Name: "Ann",
+			Topics: map[model.ID]float64{"ledger": 4},
+			Recent: map[model.ID]float64{"ledger": 1},
+		},
+		WantQuiet: nil, WantActive: 1,
+	}, { // Test 3: A deactivated person is quiet and never active.
+		Person: &model.Person{
+			ID: "ann@x.com", Name: "Ann", Account: model.AccountDeactivated,
+			Topics: map[model.ID]float64{"ledger": 4},
+			Recent: map[model.ID]float64{"ledger": 1},
+		},
+		WantQuiet: []string{"ledger"}, WantActive: 0,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			ix := index.New()
+			ix.Graph.Topics = map[model.ID]*model.Topic{
+				"billing": {ID: "billing", Name: "billing", Curated: true},
+				"ledger":  {ID: "ledger", Name: "ledger", Curated: true},
+			}
+			ix.Graph.People = map[model.ID]*model.Person{test.Person.ID: test.Person}
+			ix.Canonicalize()
+
+			d := BuildDirectory(ix)
+			if len(d.People) != 1 {
+				t.Fatalf("people = %+v, want one", d.People)
+			}
+			if diff := cmp.Diff(test.WantQuiet, d.People[0].Quiet, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("quiet mismatch (-want +got):\n%s", diff)
+			}
+			for _, topic := range d.Topics {
+				if topic.Name == "ledger" && topic.Active != test.WantActive {
+					t.Errorf("ledger active = %d, want %d", topic.Active, test.WantActive)
+				}
+			}
+		})
 	}
 }

@@ -8,8 +8,8 @@ public enum ChangeSummary {
     // lines has one sentence per kind of change, and none when nothing changed.
     public static func lines(_ c: IndexChanges) -> [String] {
         [
-            line("Joined", c.peopleJoined),
-            line("Left", c.peopleLeft),
+            line("Added to index", c.peopleJoined),
+            line("No longer in index", c.peopleLeft),
             line("New teams", c.teamsAdded),
             line("Teams gone", c.teamsRemoved),
             line("New channels", c.channelsAdded?.map { "#\($0)" }),

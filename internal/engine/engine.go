@@ -117,11 +117,15 @@ type Status struct {
 	Deactivated int
 	// Channels is the number of channels indexed.
 	Channels int
-	// Teams is the number of teams indexed.
+	// Teams is the number of teams of record indexed.
 	Teams int
-	// Subjects counts topics a source stated.
+	// Groups is the number of CODEOWNERS groups indexed. A group is declared as
+	// an owner with no membership on record, so it is counted apart from Teams.
+	Groups int
+	// Subjects counts the subjects people are on record for, folded to one per
+	// group, the same set the directory lists and risk weighs.
 	Subjects int
-	// Words counts topics mined from prose.
+	// Words counts topics mined from prose that do not read as a subject.
 	Words int
 	// Sources maps each source name to the records it contributed.
 	Sources map[string]int
@@ -136,23 +140,26 @@ type Status struct {
 // Status reports what the index holds, with its age measured from now. The
 // caller supplies now so a host process owns the clock.
 func (e *Engine) Status(now time.Time) Status {
-	// A subject was stated by a source; a word was mined from prose so a
-	// question phrased in somebody's own vocabulary still matches. The two are
-	// counted apart because the words outnumber the subjects by orders of
-	// magnitude and a single total misrepresents both.
-	stated := 0
+	// A subject is something the organization has and somebody holds; a word
+	// was mined from prose so a question phrased in somebody's own vocabulary
+	// still matches. The two are counted apart because the words outnumber the
+	// subjects by orders of magnitude and a single total misrepresents both.
+	words := 0
 	for _, t := range e.ix.Graph.Topics {
-		if t.Curated {
-			stated++
+		if !t.Salient() {
+			words++
 		}
 	}
 	sources := make(map[string]int)
 	for _, name := range e.ix.SourceNames() {
 		sources[name] = e.ix.SourceSize(name)
 	}
-	deactivated := 0
+	deactivated, groups := 0, 0
 	for id, p := range e.ix.Graph.People {
-		if !id.IsTeam() && p.Deactivated() {
+		switch {
+		case id.IsTeam():
+			groups++
+		case p.Deactivated():
 			deactivated++
 		}
 	}
@@ -161,8 +168,9 @@ func (e *Engine) Status(now time.Time) Status {
 		Deactivated: deactivated,
 		Channels:    len(e.ix.Graph.Channels),
 		Teams:       len(e.ix.Graph.Teams),
-		Subjects:    stated,
-		Words:       len(e.ix.Graph.Topics) - stated,
+		Groups:      groups,
+		Subjects:    resolve.SubjectCount(e.ix),
+		Words:       words,
 		Sources:     sources,
 		Embeddings:  e.ix.HasEmbeddings(),
 	}

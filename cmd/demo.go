@@ -66,8 +66,9 @@ log, which is the point of running it on your own code rather than on a sample.
   whotoask demo --repo .
 
 With no --repo it builds a simulated company instead. The simulation covers
-all eight sources, so identity joins, recency, match strength, and feedback all
-behave as they would on real data, but nobody can check it against anything.
+eight sources: an org chart CSV, Slack, git, GitHub, Jira, Confluence, PagerDuty,
+and CODEOWNERS. Identity joins, recency, match strength, and feedback all behave
+as they would on real data, but nobody can check it against anything.
 
 Either way nothing is fetched from the network and no credentials are needed.
 Nothing is written outside a temporary directory, discarded when the demo stops.
@@ -89,11 +90,10 @@ set becomes an open relay to your paid account.`,
 			defer func() { _ = os.RemoveAll(dir) }()
 
 			buildIndex, buildEpisodes := simorg.BuildIndex, simorg.BuildEpisodes
-			recallMe, query, sources := demoPerson, demoQuery, 8
+			recallMe, query := demoPerson, demoQuery
 			if big {
 				buildIndex, buildEpisodes = simorg.BuildBigIndex, simorg.BuildBigEpisodes
 				recallMe, query = simorg.BigDemoPerson()
-				sources = 8
 			}
 
 			fmt.Fprintln(cmd.ErrOrStderr(), "whotoask demo: indexing a simulated company (sample data only)")
@@ -120,7 +120,7 @@ set becomes an open relay to your paid account.`,
 			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(query)
 			fmt.Fprintf(cmd.ErrOrStderr(),
 				"whotoask demo: %d people, %d channels across %d sources\nwhotoask demo: try %s\n",
-				model.PeopleCount(ix.Graph.People), len(ix.Graph.Channels), sources, link)
+				model.PeopleCount(ix.Graph.People), len(ix.Graph.Channels), len(ix.SourceNames()), link)
 			if open {
 				go openBrowser(link)
 			}

@@ -98,7 +98,7 @@ To look around the web UI on sample data, run the demo:
 
     whotoask demo
 
-That builds a simulated company across all eight sources and opens on an
+That builds a simulated company across eight sources and opens on an
 answered question. Click a name for details, try "who owns terraform", vote on
 a result. `whotoask demo --repo .` serves the same view over your own
 repository instead and opens on the exposure view: each directory with enough
@@ -652,7 +652,7 @@ non-zero. To prove the seal came from your install, publish the output of
 - `whotoask index --source pagerduty` indexes PagerDuty services and on-call.
 - `whotoask index --source git --repo-path DIR [--git-since-days N] [--max-commits N]`
   indexes local git history.
-- `whotoask demo` explores a simulated company across all eight sources in the
+- `whotoask demo` explores a simulated company across eight sources in the
   web UI. `whotoask demo --repo .` serves the same view over a repository you
   already have and opens on the subjects with one person on record. Either way,
   no credentials, and no index is left behind.

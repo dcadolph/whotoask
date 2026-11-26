@@ -488,6 +488,7 @@ func BuildBigEpisodes(ix *index.Index) (*episode.Store, error) {
 			return nil, fmt.Errorf("simorg: %s episodes: %w", s.Name, err)
 		}
 		eps := s.Source.Episodes()
+		stableLinks(eps, jiraSrv.URL)
 		if ix != nil {
 			ix.CanonicalizeEpisodes(eps)
 		}

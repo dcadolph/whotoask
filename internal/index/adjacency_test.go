@@ -91,6 +91,37 @@ func TestNearRanksBySharedGroupsAndTopics(t *testing.T) {
 	}
 }
 
+// TestNearListsDeactivatedLast checks a deactivated person is marked and comes
+// after everyone who can still be reached, however near their record is, the
+// way ask lists them.
+func TestNearListsDeactivatedLast(t *testing.T) {
+	t.Parallel()
+	ix := New()
+	g := ix.Graph
+	g.Topics["t1"] = &model.Topic{ID: "t1", Name: "billing"}
+	g.People["alice"] = &model.Person{ID: "alice", Name: "Alice", Topics: map[model.ID]float64{"t1": 1}}
+	g.People["gone"] = &model.Person{
+		ID: "gone", Name: "Gone", Account: model.AccountDeactivated,
+		Topics: map[model.ID]float64{"t1": 1},
+	}
+	g.People["bob"] = &model.Person{ID: "bob", Name: "Bob", Topics: map[model.ID]float64{"t1": 0.2}}
+	g.Channels["pay"] = &model.Channel{ID: "pay", Name: "pay", Members: []model.ID{"alice", "gone"}}
+
+	got := ix.Near("alice", 10)
+	var order []string
+	var marked []bool
+	for _, a := range got {
+		order = append(order, string(a.ID))
+		marked = append(marked, a.Deactivated)
+	}
+	if diff := cmp.Diff([]string{"bob", "gone"}, order); diff != "" {
+		t.Errorf("order mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]bool{false, true}, marked); diff != "" {
+		t.Errorf("deactivated mismatch (-want +got):\n%s", diff)
+	}
+}
+
 // TestNearIsNotTheSamePeopleForEveryone checks proximity is measured against
 // how much each person knows rather than as a raw total. Every organization has
 // a few people who touch all of it, and by raw overlap they are near everybody:

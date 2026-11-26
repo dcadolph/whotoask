@@ -13,6 +13,7 @@ import (
 	"github.com/dcadolph/whotoask/internal/index"
 	"github.com/dcadolph/whotoask/internal/policy"
 	"github.com/dcadolph/whotoask/internal/recall"
+	"github.com/dcadolph/whotoask/internal/resolve"
 	"github.com/dcadolph/whotoask/internal/simorg"
 )
 
@@ -155,8 +156,18 @@ func TestEngineStatus(t *testing.T) {
 	if st.People != len(ix.Graph.People) || st.People == 0 {
 		t.Errorf("people = %d, want %d and nonzero", st.People, len(ix.Graph.People))
 	}
-	if st.Subjects+st.Words != len(ix.Graph.Topics) {
-		t.Errorf("subjects %d + words %d != topics %d", st.Subjects, st.Words, len(ix.Graph.Topics))
+	// The subject count is the directory's topic list and risk's subjects,
+	// folded the same way, so the numbers a reader sees in status and on the
+	// directory page reconcile.
+	listed := resolve.BuildDirectory(ix)
+	if st.Subjects != len(listed.Topics) || st.Subjects == 0 {
+		t.Errorf("subjects = %d, directory lists %d topics", st.Subjects, len(listed.Topics))
+	}
+	if st.Subjects+st.Words > len(ix.Graph.Topics) {
+		t.Errorf("subjects %d + words %d > topics %d", st.Subjects, st.Words, len(ix.Graph.Topics))
+	}
+	if st.People != len(listed.People) {
+		t.Errorf("status people = %d, directory people = %d", st.People, len(listed.People))
 	}
 	if len(st.Sources) == 0 {
 		t.Error("status lists no sources")

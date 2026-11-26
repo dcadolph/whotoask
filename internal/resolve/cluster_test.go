@@ -154,6 +154,11 @@ func TestRelatedLeadsWithWhatChangedTogether(t *testing.T) {
 	if got[0].Because != becauseTogether {
 		t.Errorf("evidence = %q, want it to say the two were worked on together", got[0].Because)
 	}
+	// Ada alone holds ledger and also holds billing, so every ledger holder
+	// overlaps billing even though the row came from the work.
+	if got[0].Overlap != 1 {
+		t.Errorf("ledger overlap = %v, want 1: its one holder also holds billing", got[0].Overlap)
+	}
 	// The weaker kind still appears, so nothing is lost by preferring the other.
 	var sawExperts bool
 	for _, r := range got {

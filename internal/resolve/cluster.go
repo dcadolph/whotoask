@@ -23,8 +23,8 @@ const relatedCut = 0.6
 type TopicRelation struct {
 	// Topic is the related topic.
 	Topic string `json:"topic"`
-	// Overlap is the share of the source topic's experts who also hold this one,
-	// 0 to 1.
+	// Overlap is the share of this topic's people on record who also hold the
+	// source topic, 0 to 1.
 	Overlap float64 `json:"overlap"`
 	// Narrower marks a topic that looks like a specialty of the source topic:
 	// its experts are a subset, and there are fewer of them.
@@ -84,16 +84,10 @@ func Related(ix *index.Index, topic string, limit int) []TopicRelation {
 		if other == strings.ToLower(strings.TrimSpace(topic)) || len(people) == 0 {
 			continue
 		}
-		shared := 0
-		for id := range people {
-			if want[id] {
-				shared++
-			}
-		}
-		if shared == 0 {
+		overlap := sharedShare(people, want)
+		if overlap == 0 {
 			continue
 		}
-		overlap := float64(shared) / float64(len(people))
 		if overlap < relatedCut {
 			continue
 		}
@@ -146,6 +140,7 @@ func changedTogether(ix *index.Index, topic string, holders map[string]map[model
 		}
 		rel := TopicRelation{
 			Topic:    other,
+			Overlap:  sharedShare(people, holders[strings.ToLower(strings.TrimSpace(topic))]),
 			Together: tie.Weight,
 			Spanned:  tie.Witnesses,
 			Experts:  len(people),
@@ -184,6 +179,21 @@ func changedTogether(ix *index.Index, topic string, holders map[string]map[model
 		}
 	}
 	return kept
+}
+
+// sharedShare returns the share of people who are also in want, 0 to 1, and
+// zero when people is empty.
+func sharedShare(people, want map[model.ID]bool) float64 {
+	if len(people) == 0 {
+		return 0
+	}
+	shared := 0
+	for id := range people {
+		if want[id] {
+			shared++
+		}
+	}
+	return float64(shared) / float64(len(people))
 }
 
 // mergeCut is the share of a fragment topic's experts who must also hold the

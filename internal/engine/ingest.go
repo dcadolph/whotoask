@@ -18,6 +18,7 @@ import (
 	"github.com/dcadolph/whotoask/internal/llm"
 	"github.com/dcadolph/whotoask/internal/model"
 	"github.com/dcadolph/whotoask/internal/policy"
+	"github.com/dcadolph/whotoask/internal/resolve"
 	"github.com/dcadolph/whotoask/internal/util"
 	"github.com/dcadolph/whotoask/internal/vault"
 )
@@ -574,22 +575,23 @@ func (x *Indexer) embed(ctx context.Context, ix *index.Index, p FoldParams) erro
 // and lists the changes since the last run.
 func (x *Indexer) reportFold(ix *index.Index, changes index.Changes) {
 	out := x.log()
-	// Subjects and words are counted apart on purpose. A subject is something a
-	// source stated: a label, a component, a directory. A word is something
-	// mined from prose so a question phrased in somebody's own vocabulary still
-	// matches. On a real issue tracker the mined words outnumber the stated
-	// subjects four hundred to one, and reporting the total as "topics" made the
-	// index look like it understood four hundred times more than it does.
-	stated := 0
+	// Subjects and words are counted apart on purpose. A subject is something
+	// the organization has and somebody holds: a label, a component, a
+	// directory. A word is something mined from prose so a question phrased in
+	// somebody's own vocabulary still matches. On a real issue tracker the mined
+	// words outnumber the subjects four hundred to one, and reporting the total
+	// as "topics" made the index look like it understood four hundred times
+	// more than it does.
+	words := 0
 	for _, t := range ix.Graph.Topics {
-		if t.Curated {
-			stated++
+		if !t.Salient() {
+			words++
 		}
 	}
 	fmt.Fprintf(out,
 		"indexed %d people, %d channels, %d teams, %d subjects and %d words from text into %s\n",
 		model.PeopleCount(ix.Graph.People), len(ix.Graph.Channels), len(ix.Graph.Teams),
-		stated, len(ix.Graph.Topics)-stated, x.Dir.Index())
+		resolve.SubjectCount(ix), words, x.Dir.Index())
 	if c, _ := x.codec(); c == nil && len(ix.Graph.People) > 0 {
 		fmt.Fprintln(out,
 			"note: this index holds names, emails, and titles in plaintext, protected only by file "+

@@ -27,7 +27,7 @@ struct PersonView: View {
                 Field(label: "On record for", value: topics.prefix(8).joined(separator: ", "))
             }
             if let channels = person.channels, !channels.isEmpty {
-                Field(label: "Active in", value: channels.prefix(6).map { "#\($0)" }.joined(separator: ", "))
+                Field(label: "Has posted in", value: channels.prefix(6).map { "#\($0)" }.joined(separator: ", "))
             }
             ForEach(SearchModel.contactLinks(person.links ?? [], deactivated: person.isDeactivated),
                     id: \.self) { link in

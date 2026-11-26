@@ -119,8 +119,7 @@ const briefRows = 100
 
 // briefFindings is what an assessment has already worked out and a brief would
 // otherwise have to do without: the places, their check commands, what moving
-// areas has cost, the identity judgments, and who stands nearest to each key
-// person. They are gathered into one struct because they arrive together and
+// areas has cost, and the identity judgments. They are gathered into one struct because they arrive together and
 // half of them are empty whenever no repository was read.
 type briefFindings struct {
 	// Systems are the directories the work rests on, in the order PlaceLeads
@@ -136,32 +135,8 @@ type briefFindings struct {
 	Split []resolve.SplitName
 	// Aliases are the joins the rules declined to make without a human.
 	Aliases []resolve.AliasSuggestion
-	// Successors is who stands nearest to what rests on each key person.
-	Successors []personSuccession
 	// Merged is how many records the identity rules folded together.
 	Merged int
-}
-
-// successions converts the assessment's succession findings into the brief's
-// form, which carries text rather than a candidate that may be absent.
-func successions(found []personSuccession) []report.Succession {
-	out := make([]report.Succession, 0, len(found))
-	for _, s := range found {
-		entry := report.Succession{Person: s.Person, Dir: s.Dir, NobodyClose: s.NobodyClose}
-		if s.Nearest != nil {
-			entry.Nearest = s.Nearest.Name
-			for _, r := range s.Nearest.Reasons {
-				entry.Reasons = append(entry.Reasons, r.Detail)
-			}
-		}
-		// Nothing to say and nobody named is not a finding, so it is dropped
-		// rather than rendered as an empty answer beside an exposure.
-		if entry.Nearest == "" && !entry.NobodyClose {
-			continue
-		}
-		out = append(out, entry)
-	}
-	return out
 }
 
 // riskHTML renders the knowledge-risk brief into memory. Rendering before
@@ -176,7 +151,7 @@ func riskHTML(
 ) ([]byte, error) {
 	// Score everything, then cap only what is listed. A brief that quietly
 	// counted just the rows it printed would understate the finding it is for.
-	exposed := report.AttachSuccession(report.Exposures(all), successions(found.Successors))
+	exposed := report.Exposures(all)
 	listed := all
 	if limit > 0 && len(listed) > limit {
 		listed = listed[:limit]

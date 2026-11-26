@@ -18,8 +18,9 @@ func newStatusCmd(opts *options) *cobra.Command {
 		Use:   "status",
 		Short: "Show what the index holds and how fresh it is",
 		Long: `Report the index: when it was last built, how many people, channels, teams,
-and topics it holds, how many records each source contributed, whether it carries
-embeddings, and whether a key is set to encrypt it at rest.`,
+CODEOWNERS groups, subjects, and mined words it holds, how many records each
+source contributed, whether it carries embeddings, and whether a key is set to
+encrypt it at rest.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ix, err := opts.loadIndex(cmd)
@@ -41,6 +42,9 @@ embeddings, and whether a key is set to encrypt it at rest.`,
 				"sources":                   st.Sources,
 				"embeddings":                st.Embeddings,
 				"encryption_key_configured": codec != nil,
+			}
+			if st.Groups > 0 {
+				view["codeowners_groups"] = st.Groups
 			}
 			if st.Deactivated > 0 {
 				view["deactivated"] = st.Deactivated

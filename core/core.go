@@ -450,11 +450,12 @@ type statusView struct {
 	Deactivated int `json:"deactivated,omitempty"`
 	// Channels is the number of channels indexed.
 	Channels int `json:"channels"`
-	// Teams is the number of teams indexed.
+	// Teams is the number of teams of record indexed.
 	Teams int `json:"teams"`
-	// Subjects counts topics a source stated.
+	// Subjects counts the subjects people are on record for, folded to one per
+	// group.
 	Subjects int `json:"subjects"`
-	// Words counts topics mined from prose.
+	// Words counts topics mined from prose that do not read as a subject.
 	Words int `json:"words"`
 	// Sources maps each source name to the records it contributed.
 	Sources map[string]int `json:"sources"`

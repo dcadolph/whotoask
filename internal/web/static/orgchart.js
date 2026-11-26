@@ -398,7 +398,7 @@
 		return true;
 	}
 	function populateFilters(dir) {
-		(dir.teams || []).forEach(function (t) { addOption(el.team, t.name, t.name + " · " + t.people); });
+		(dir.teams || []).forEach(function (t) { addOption(el.team, t.name, t.name + " · " + (t.group ? "CODEOWNERS group" : t.people)); });
 		(dir.topics || []).slice(0, 200).forEach(function (t) { addOption(el.topic, t.name, t.name + " · " + t.people); });
 	}
 	function addOption(sel, val, label) { var o = document.createElement("option"); o.value = val; o.textContent = label; sel.appendChild(o); }
