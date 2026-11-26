@@ -154,31 +154,16 @@ func TestWriteRiskSectionsFollowTheirContent(t *testing.T) {
 		Name:    "ramp below the floor",
 		In:      Brief{Ramp: resolve.Ramp{Arrivals: 9, Established: 3, Places: 2}},
 		WantNot: []string{`id="ramp"`, "not a forecast"},
-	}, { // Test 5: A measured ramp renders, and the successor sits with the exposure.
-		Name: "measured ramp and succession",
+	}, { // Test 5: A measured ramp renders beside the exposure, with no successor named.
+		Name: "measured ramp",
 		In: Brief{
 			Ramp: measuredRamp,
 			Exposed: []Exposure{{
 				Name: "Ada Lovelace", ID: "a", Sole: []string{"billing"},
-				Succession: &Succession{
-					Person: "a", Dir: "internal/billing", Nearest: "Bo Wren",
-					Reasons: []string{"holds 4 of the 6 subjects they hold", "reviewed changes there"},
-				},
 			}},
 		},
-		WantHas: []string{
-			`id="ramp"`, "Bo Wren",
-			"holds 4 of the 6 subjects they hold; reviewed changes there",
-			"Judged against internal/billing",
-		},
-		WantNot: []string{`id="systems"`, `id="checks"`},
-	}, { // Test 6: Nobody standing out is printed as the finding it is.
-		Name: "nobody stands out",
-		In: Brief{Exposed: []Exposure{{
-			Name: "Ada Lovelace", ID: "a", Sole: []string{"billing"},
-			Succession: &Succession{Person: "a", NobodyClose: true},
-		}}},
-		WantHas: []string{"Nobody stands out in the record, which is itself the finding."},
+		WantHas: []string{`id="ramp"`, "Ada Lovelace"},
+		WantNot: []string{`id="systems"`, `id="checks"`, "Who stands nearest"},
 	}}
 	for testNum, test := range tests {
 		t.Run(fmt.Sprintf("test %d %s", testNum, test.Name), func(t *testing.T) {
@@ -288,9 +273,6 @@ func TestWriteRiskEscapesAssessmentFindings(t *testing.T) {
 		Ramp:   measuredRamp,
 		Exposed: []Exposure{{
 			Name: hostile, ID: "a", Sole: []string{hostile},
-			Succession: &Succession{
-				Person: "a", Dir: hostile, Nearest: hostile, Reasons: []string{hostile},
-			},
 		}},
 	}
 	var buf bytes.Buffer
@@ -310,35 +292,6 @@ func TestWriteRiskEscapesAssessmentFindings(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the escaped form %q is missing, so the text was dropped instead", want)
 		}
-	}
-}
-
-// TestAttachSuccession checks each succession lands on the exposure it answers
-// and that one for somebody with no exposure is dropped rather than rendered
-// beside the wrong person.
-func TestAttachSuccession(t *testing.T) {
-	t.Parallel()
-	exposed := []Exposure{
-		{Name: "Ada", ID: "a", Sole: []string{"billing"}},
-		{Name: "Bo", ID: "b", Leading: []string{"payroll"}},
-	}
-	found := []Succession{
-		{Person: "b", Nearest: "Cy", Reasons: []string{"holds 3 of their subjects"}},
-		{Person: "z", Nearest: "Nobody's exposure"},
-		{Person: "", NobodyClose: true},
-	}
-	want := []Exposure{
-		{Name: "Ada", ID: "a", Sole: []string{"billing"}},
-		{Name: "Bo", ID: "b", Leading: []string{"payroll"}, Succession: &Succession{
-			Person: "b", Nearest: "Cy", Reasons: []string{"holds 3 of their subjects"},
-		}},
-	}
-	got := AttachSuccession(exposed, found)
-	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("succession mismatch (-want +got):\n%s", diff)
-	}
-	if exposed[1].Succession != nil {
-		t.Error("the input exposures were modified in place")
 	}
 }
 

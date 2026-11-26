@@ -77,58 +77,6 @@ type Exposure struct {
 	Sole []string
 	// Leading are the topics they lead while others still contribute.
 	Leading []string
-	// Succession is who stands nearest to what rests on them, nil when no
-	// succession was computed for this person.
-	Succession *Succession
-}
-
-// Succession is who stands nearest to what rests on one person.
-//
-// It is flattened out of the resolve finding so the template renders text
-// rather than walking a candidate that may not exist. Nobody standing out is
-// carried as its own field for the same reason: it is a finding, and a
-// template reading a nil candidate would print a blank instead.
-type Succession struct {
-	// Person is the holder's canonical identifier, which is what ties the
-	// finding to the exposure it answers.
-	Person string
-	// Dir is the place the succession was judged against, empty when the holder
-	// leads no reported system and only subjects were compared.
-	Dir string
-	// Nearest is the candidate's display name, empty when NobodyClose.
-	Nearest string
-	// Reasons is the evidence for the candidate, strongest first.
-	Reasons []string
-	// NobodyClose is set when the record offers no natural second, which is a
-	// sharper finding than a candidate rather than a gap in the report.
-	NobodyClose bool
-}
-
-// AttachSuccession puts each succession beside the exposure it answers, so a
-// reader meets who stands nearest in the same entry that says what would leave
-// with the person. A succession for somebody who holds nothing alone and leads
-// nothing has no exposure to attach to and is dropped.
-func AttachSuccession(exposed []Exposure, found []Succession) []Exposure {
-	byID := make(map[string]Succession, len(found))
-	for _, s := range found {
-		if s.Person == "" {
-			continue
-		}
-		if _, taken := byID[s.Person]; !taken {
-			byID[s.Person] = s
-		}
-	}
-	out := make([]Exposure, len(exposed))
-	copy(out, exposed)
-	for i := range out {
-		s, ok := byID[out[i].ID]
-		if !ok {
-			continue
-		}
-		attached := s
-		out[i].Succession = &attached
-	}
-	return out
 }
 
 // ListedSystems cuts the places down to the n a brief lists and brings each
@@ -308,18 +256,6 @@ var funcs = template.FuncMap{
 	},
 	"sub":   func(a, b int) int { return a - b },
 	"notes": CheckNotes,
-	// evidence joins reason fragments with semicolons, because a fragment such
-	// as "holds 4 of the 6 subjects they hold" carries its own commas.
-	"evidence": func(parts []string) string {
-		out := ""
-		for i, p := range parts {
-			if i > 0 {
-				out += "; "
-			}
-			out += p
-		}
-		return out
-	},
 }
 
 // WriteRisk renders the brief as one self-contained HTML file. Nothing is

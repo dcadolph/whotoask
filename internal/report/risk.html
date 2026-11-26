@@ -298,7 +298,6 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 <section id="people">
 	<h2>By person <span class="count">({{ len .Exposed }})</span></h2>
 	<p class="desc">The same finding read by person rather than by topic. A subject with only one active person on record has nobody else in the record still able to pick it up, because anyone else on it has a deactivated account. A subject where they are the lead on record has other active people also on record, so it degrades rather than disappears.</p>
-	<p class="desc">Where a nearest candidate is named, that is a statement about the record and not about ability: of everyone indexed, this person starts closest to the work. Where nobody is named, nobody in the record stands out, which is the sharper finding of the two.</p>
 	{{ if .Exposed }}
 		{{ range .Exposed }}
 		<details>
@@ -311,14 +310,6 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				{{ if .Leading }}
 				<h4>Lead on record, others also on record</h4>
 				<p>{{ join .Leading }}</p>
-				{{ end }}
-				{{ with .Succession }}
-				<h4>Who stands nearest</h4>
-				{{ if .NobodyClose }}
-				<p>Nobody stands out in the record, which is itself the finding.</p>
-				{{ else }}
-				<p>{{ .Nearest }}{{ if .Reasons }}: {{ evidence .Reasons }}{{ end }}.{{ if .Dir }} <span class="count">Judged against {{ .Dir }}.</span>{{ end }}</p>
-				{{ end }}
 				{{ end }}
 			</div>
 		</details>
