@@ -198,8 +198,8 @@ struct TeamRow: View {
     }
 }
 
-// PersonRow is one suggested person: name, role, and why they matched. It shows no strength,
-// since the order and the match strength come from different numbers.
+// PersonRow is one suggested person: name, role, and why they matched. It shows no strength:
+// the list is already best match first, and the reasons say why.
 struct PersonRow: View {
     // person is the suggestion shown.
     let person: AskPerson

@@ -133,7 +133,7 @@ public struct AskPerson: Codable, Hashable, Sendable, Identifiable {
     public let reasons: [String]?
     // score is the ranking score.
     public let score: Double
-    // strength is the score relative to the best answer, zero to one.
+    // strength is the match strength, zero to one, never above the row before it.
     public let strength: Double
     // deactivated is true when every account the index knows for the person is deactivated,
     // absent otherwise.
@@ -186,7 +186,7 @@ public struct AskChannel: Codable, Hashable, Sendable {
     public let reasons: [String]?
     // score is the ranking score.
     public let score: Double
-    // strength is the score relative to the best answer, zero to one.
+    // strength is the match strength, zero to one, never above the row before it.
     public let strength: Double
 }
 

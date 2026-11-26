@@ -128,9 +128,9 @@ and second mailboxes, and an alias file covers the rest.
 
 Explicit signals such as ownership files and on-call rotations stay strong, while repetition
 saturates, so the person who owns a thing is listed above the person who talks about it most.
-People active recently count for more. Results come best match first, and a row says which words
-matched where when it can. People rows show no percent or bar, because the order and the match
-strength come from different numbers. `--json` keeps the numeric `strength`. Confirm or correct
+Recent work counts for more, and each subject is dated by the latest activity on that subject.
+Results come best match first, and a row says which words matched where when it can. People rows
+show no percent or bar. `--json` keeps the numeric `strength`, which never rises down the list. Confirm or correct
 an answer and later answers to that question move with it, marked "moved by votes on this
 question".
 

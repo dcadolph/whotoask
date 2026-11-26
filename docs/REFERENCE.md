@@ -243,8 +243,8 @@ show reasons where the match has any. A person whose place votes changed says
 "moved by votes on this question". In JSON each result carries a `strength` from
 zero to one: query coverage scaled by the weight of the evidence, where an
 explicit topic counts most, a title slightly less, a passing mention half. The
-strength does not set the order, so a later row can carry a higher strength than
-an earlier one, which is why no person row shows it.
+order comes from the ranking score, and strength is capped at the row above it,
+so it never rises down the list. No person row shows it.
 
 ## whotoask recall
 
@@ -950,10 +950,14 @@ be told from a wrong guess.
 
 ## Recency
 
-Dated records lose half their weight per half-life, 180 days by default, so
-today's owner is listed above one from years ago. Tune with `--half-life-days` at
-index time; `0` disables decay. Undated sources (org chart, CODEOWNERS,
-on-call) describe the present and never decay.
+Dated work loses half its weight per half-life, 180 days by default, so today's
+owner is listed above one from years ago. Each subject decays from the latest
+activity on that subject, not from the person's latest activity anywhere, so a
+commit to one area does not freshen years-old work in another. An index built
+before 3.0.0 keeps per-person dating until each source is read again with
+`--full`. Tune with `--half-life-days` at index time; `0` disables decay.
+Undated sources (org chart, CODEOWNERS, on-call) describe the present and never
+decay.
 
 ## Policy
 

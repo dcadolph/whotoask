@@ -336,9 +336,8 @@ function personAvatar(name) {
 }
 
 // personCard draws one person in an answer. It carries no position number and
-// no strength mark: the list is already best match first, and the strength
-// figure comes from a different number than the order, so showing it beside a
-// name would let a row read as stronger than the row above it.
+// no strength mark: the list is already best match first, and the reasons say
+// why each person matched.
 function personCard(p, query) {
   const card = el("div", "card person-card");
 

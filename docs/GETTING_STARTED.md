@@ -214,8 +214,8 @@ Each keyword-mode result carries a `strength` from zero to one in JSON: how
 much of the question matched, scaled by how strong the match is. It is
 deterministic arithmetic, not a probability, which is why it is called match
 strength and not confidence. An explicit topic counts most, a job title slightly
-less, a passing mention in chat half. The strength does not set the order, so
-the second row can carry a higher strength than the first. For that reason no
+less, a passing mention in chat half. The order comes from the ranking score,
+and strength is capped at the row above it, so it never rises down the list. No
 person row in the terminal, the web UI, the Mac app, or the Slack bot shows a
 strength label, percent, or bar. The order and the reasons are what you read.
 
@@ -597,11 +597,13 @@ the override for those.
 ## Recent activity counts more
 
 Activity ages. Someone who owned a topic three years ago is usually the wrong
-person to ask today, so dated records decay: a record loses half its weight per
-half-life, 180 days by default. Slack messages, GitHub pull requests and
-issues, Jira issues, and Confluence pages all carry their activity date. The
-org chart, CODEOWNERS, and PagerDuty on-call describe the present and never
-decay.
+person to ask today, so dated work decays: it loses half its weight per
+half-life, 180 days by default. Each subject is dated by the latest activity on
+that subject, so a fresh commit to one area does not freshen old work in
+another. An index built before 3.0.0 picks this up once each source is read
+again with `--full`. Slack messages, GitHub pull requests and issues, Jira
+issues, and Confluence pages all carry their activity date. The org chart,
+CODEOWNERS, and PagerDuty on-call describe the present and never decay.
 
 Tune it at index time:
 
